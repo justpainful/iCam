@@ -327,6 +327,18 @@ public sealed partial class CameraPage : Page
             TemperatureReadout.Text = $"{state.Temperature:0} K";
 
             TorchToggle.IsOn = state.Torch != TorchMode.Off;
+
+            BrightnessSlider.Value = state.Brightness;
+            ContrastSlider.Value = state.Contrast;
+            SaturationSlider.Value = state.Saturation;
+            WarmthSlider.Value = state.Warmth;
+            SharpnessSlider.Value = state.Sharpness;
+
+            BrightnessReadout.Text = Describe(state.Brightness);
+            ContrastReadout.Text = Describe(state.Contrast);
+            SaturationReadout.Text = Describe(state.Saturation);
+            WarmthReadout.Text = Describe(state.Warmth);
+            SharpnessReadout.Text = Describe(state.Sharpness);
         }
         finally
         {
@@ -487,6 +499,50 @@ public sealed partial class CameraPage : Page
     private void OnTorchToggled(object sender, RoutedEventArgs e) =>
         Send(m => m.Torch = TorchToggle.IsOn ? TorchMode.On : TorchMode.Off);
 
+    private void OnBrightnessChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        BrightnessReadout.Text = Describe(e.NewValue);
+        Send(m => m.Brightness = Math.Round(e.NewValue, 2));
+    }
+
+    private void OnContrastChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        ContrastReadout.Text = Describe(e.NewValue);
+        Send(m => m.Contrast = Math.Round(e.NewValue, 2));
+    }
+
+    private void OnSaturationChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        SaturationReadout.Text = Describe(e.NewValue);
+        Send(m => m.Saturation = Math.Round(e.NewValue, 2));
+    }
+
+    private void OnWarmthChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        WarmthReadout.Text = Describe(e.NewValue);
+        Send(m => m.Warmth = Math.Round(e.NewValue, 2));
+    }
+
+    private void OnSharpnessChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        SharpnessReadout.Text = Describe(e.NewValue);
+        Send(m => m.Sharpness = Math.Round(e.NewValue, 2));
+    }
+
+    /// <summary>
+    /// All five in one mutation, so they come back together as a single state
+    /// rather than as five the phone has to reconcile in turn.
+    /// </summary>
+    private void OnResetImage(object sender, RoutedEventArgs e) =>
+        Send(m =>
+        {
+            m.Brightness = 0;
+            m.Contrast = 0;
+            m.Saturation = 0;
+            m.Warmth = 0;
+            m.Sharpness = 0;
+        });
+
     /// <summary>
     /// Sends one mutation carrying only what this control touched. That is what
     /// lets the phone and this window be edited at the same time without either
@@ -533,6 +589,9 @@ public sealed partial class CameraPage : Page
         (1280, 720) => "720p",
         _ => $"{width} × {height}",
     };
+
+    /// <summary>An image control, which is always signed and always centred on 0.</summary>
+    private static string Describe(double amount) => $"{amount:+0.00;-0.00;0.00}";
 
     private static string Describe(string value) => value switch
     {

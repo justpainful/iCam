@@ -104,10 +104,12 @@ struct CameraState: Codable, Equatable, Sendable {
     var mirrored: Bool = false
     var orientation: OrientationLock = .auto
 
-    // Image rendering (applied to derived outputs, never to the master)
+    // Image rendering (applied to derived outputs, never to the master).
+    // Each runs -1 to +1 and means "leave it alone" at 0.
     var brightness: Double = 0
     var contrast: Double = 0
     var saturation: Double = 0
+    var warmth: Double = 0
     var sharpness: Double = 0
 
     enum CodingKeys: String, CodingKey {
@@ -118,7 +120,7 @@ struct CameraState: Codable, Equatable, Sendable {
         case whiteBalanceMode, whiteBalancePreset, temperature, tint
         case focusMode, focusPosition, focusLocked, faceDrivenFocus
         case torch, torchLevel, mirrored, orientation
-        case brightness, contrast, saturation, sharpness
+        case brightness, contrast, saturation, warmth, sharpness
     }
 
     /// Shutter denominator for display: 8333 µs reads as `1/120`.
@@ -166,6 +168,7 @@ struct CameraMutation: Codable, Equatable, Sendable {
     var brightness: Double?
     var contrast: Double?
     var saturation: Double?
+    var warmth: Double?
     var sharpness: Double?
 
     var isEmpty: Bool {
@@ -179,7 +182,8 @@ struct CameraMutation: Codable, Equatable, Sendable {
             && focusMode == nil && focusPosition == nil && focusLocked == nil
             && faceDrivenFocus == nil
             && torch == nil && torchLevel == nil && mirrored == nil && orientation == nil
-            && brightness == nil && contrast == nil && saturation == nil && sharpness == nil
+            && brightness == nil && contrast == nil && saturation == nil
+            && warmth == nil && sharpness == nil
     }
 
     /// Applies every present key onto `state`. Clamping to what the hardware
@@ -221,6 +225,7 @@ struct CameraMutation: Codable, Equatable, Sendable {
         if let v = brightness { state.brightness = v }
         if let v = contrast { state.contrast = v }
         if let v = saturation { state.saturation = v }
+        if let v = warmth { state.warmth = v }
         if let v = sharpness { state.sharpness = v }
     }
 }

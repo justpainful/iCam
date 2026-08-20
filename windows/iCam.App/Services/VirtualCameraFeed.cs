@@ -35,6 +35,13 @@ public sealed class VirtualCameraFeed : IDisposable
     public ulong FramesDelivered { get; private set; }
     public ulong FramesSkipped { get; private set; }
 
+    /// <summary>
+    /// The image controls to apply on the way out, or <c>null</c> for the
+    /// picture exactly as the phone sent it. It belongs to the iPhone the
+    /// frames are coming from, so it is set alongside the player.
+    /// </summary>
+    public ImageAdjuster? Image { get; set; }
+
     public VirtualCameraFeed(VirtualCameraPipe pipe)
     {
         _pipe = pipe;
@@ -109,6 +116,12 @@ public sealed class VirtualCameraFeed : IDisposable
 
             var bgra = _target.GetPixelBytes();
             Nv12Encoder.Convert(bgra, _width * 4, _nv12, _stride, _width, _height);
+
+            // Last thing before the frame leaves the computer. Brightness and
+            // the rest belong to the derived outputs and to nothing else — the
+            // recording on the iPhone was written long before this point and
+            // has never heard of them.
+            Image?.Apply(_nv12, _width, _height, _stride);
 
             if (_pipe.TryWriteFrame(_nv12, _width, _height, _stride,
                                     MonotonicMicroseconds()))

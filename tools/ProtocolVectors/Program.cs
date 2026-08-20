@@ -268,6 +268,13 @@ static JsonArray ControlJson()
         Torch = TorchMode.On,
         TorchLevel = 0.5,
         Orientation = OrientationLock.LandscapeLeft,
+        // Non-zero, and one of them negative: these are the newest fields and
+        // the ones most likely to be dropped on one side and not the other.
+        Brightness = 0.25,
+        Contrast = -0.1,
+        Saturation = 0.5,
+        Warmth = 0.35,
+        Sharpness = -0.2,
     };
     cases.Add(new JsonObject
     {

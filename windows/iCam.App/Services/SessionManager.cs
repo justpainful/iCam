@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using ICam.Core.Media;
 using ICam.Core.Protocol;
 using ICam.Core.Transport;
 using Microsoft.UI.Dispatching;
@@ -18,6 +19,15 @@ public sealed partial class ConnectedDevice : System.ComponentModel.INotifyPrope
 
     public PeerSession Session { get; }
     public VideoPipeline Video { get; } = new();
+
+    /// <summary>
+    /// The image controls, applied on this computer to every decoded frame on
+    /// its way to the preview and to <c>iCam Camera</c> — and to nothing else.
+    /// The phone's master recording never sees them, which is the rule in
+    /// <c>docs/ARCHITECTURE.md</c>, and doing the work on a machine that is
+    /// plugged into a wall keeps it off the phone's battery.
+    /// </summary>
+    public ImageAdjuster Image { get; } = new();
 
     private string _name = "iPhone";
     private CameraState _state = new();
@@ -120,7 +130,11 @@ public sealed partial class ConnectedDevice : System.ComponentModel.INotifyPrope
 
             case ControlType.CameraState:
                 var state = ControlCodec.Payload<CameraState>(envelope);
-                if (state is not null) Post(() => State = state);
+                if (state is null) break;
+                // Not posted: the video path reads this per frame and must not
+                // wait for the interface thread to get round to it.
+                Image.Adjustments = ImageAdjustments.From(state);
+                Post(() => State = state);
                 break;
 
             case ControlType.Capabilities:

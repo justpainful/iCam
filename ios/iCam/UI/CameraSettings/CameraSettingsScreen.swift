@@ -189,7 +189,7 @@ struct CameraSettingsScreen: View {
 
     private var imageSection: some View {
         SettingsSection(title: String(localized: "Image"),
-                        footer: String(localized: "These are applied to what you send and preview. The recording on your iPhone keeps the untouched picture.")) {
+                        footer: String(localized: "Your computer applies these to the picture it shows and to iCam Camera, so they cost this iPhone nothing. The recording here keeps the untouched picture.")) {
             ValueSlider(title: String(localized: "Brightness"),
                         value: binding(\.brightness, mutate: { $0.brightness = $1 }),
                         range: -1 ... 1, step: 0.05,
@@ -200,6 +200,10 @@ struct CameraSettingsScreen: View {
                         format: { String(format: "%+.2f", $0) })
             ValueSlider(title: String(localized: "Saturation"),
                         value: binding(\.saturation, mutate: { $0.saturation = $1 }),
+                        range: -1 ... 1, step: 0.05,
+                        format: { String(format: "%+.2f", $0) })
+            ValueSlider(title: String(localized: "Warmth"),
+                        value: binding(\.warmth, mutate: { $0.warmth = $1 }),
                         range: -1 ... 1, step: 0.05,
                         format: { String(format: "%+.2f", $0) })
             ValueSlider(title: String(localized: "Sharpness"),

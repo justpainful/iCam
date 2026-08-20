@@ -134,6 +134,30 @@ When the transport drops mid-session:
 
 ---
 
+## Image adjustments
+
+Brightness, contrast, saturation, warmth and sharpness are applied to the
+**derived outputs only** — the PC preview and `iCam Camera`. The master
+recording on the phone is never touched by them, so a session graded for a
+video call still leaves a clean master to edit later.
+
+They are therefore applied **on the PC**, in `iCam.Core/Media/ImageAdjuster`,
+to the decoded NV12 frame on its way out. Two reasons, in order:
+
+1. The rule above. Anything the phone applies before the encoder would land in
+   the recording as well, and a grade is not something a recording can be
+   talked out of afterwards.
+2. The PC is plugged into a wall. `ThermalBudget` exists because every watt on
+   the phone is a frame the recorder might not get; the same arithmetic costs
+   the PC 1.3 ms of one core per 1080p frame and costs the phone nothing.
+
+The values themselves live in `CameraState`, alongside everything else, so the
+phone can show the same five controls and so they survive a reconnect. The
+phone carries them and does not act on them — the one place in the protocol
+where that is true, and it is deliberate.
+
+---
+
 ## Windows media path
 
 Decode is `MediaStreamSource` fed with AVCC access units and a codec private

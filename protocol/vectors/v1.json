@@ -148,10 +148,11 @@
         "torchLevel": 0.5,
         "mirrored": false,
         "orientation": "landscapeLeft",
-        "brightness": 0,
-        "contrast": 0,
-        "saturation": 0,
-        "sharpness": 0
+        "brightness": 0.25,
+        "contrast": -0.1,
+        "saturation": 0.5,
+        "warmth": 0.35,
+        "sharpness": -0.2
       }
     },
     {

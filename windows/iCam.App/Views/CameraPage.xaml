@@ -214,6 +214,84 @@
                         <ComboBoxItem Content="Manual" Tag="manual" />
                     </ComboBox>
 
+                    <!-- The picture, as opposed to the camera. Everything above
+                         this point asks the iPhone to do something; everything
+                         in here happens on this computer, on the way to the
+                         preview and to iCam Camera. -->
+                    <Grid>
+                        <TextBlock Text="IMAGE" Style="{StaticResource ICamSectionHeaderStyle}" />
+                        <HyperlinkButton x:Name="ImageReset" Content="Reset" Padding="0"
+                                         HorizontalAlignment="Right" VerticalAlignment="Center"
+                                         Click="OnResetImage" />
+                    </Grid>
+
+                    <StackPanel Spacing="14">
+                        <StackPanel Spacing="6">
+                            <Grid>
+                                <TextBlock Text="Brightness"
+                                           Style="{StaticResource CaptionTextBlockStyle}" />
+                                <TextBlock x:Name="BrightnessReadout" Text="0.00"
+                                           HorizontalAlignment="Right"
+                                           Style="{StaticResource ICamReadoutTextStyle}" />
+                            </Grid>
+                            <Slider x:Name="BrightnessSlider" Minimum="-1" Maximum="1"
+                                    StepFrequency="0.05" ValueChanged="OnBrightnessChanged" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="6">
+                            <Grid>
+                                <TextBlock Text="Contrast"
+                                           Style="{StaticResource CaptionTextBlockStyle}" />
+                                <TextBlock x:Name="ContrastReadout" Text="0.00"
+                                           HorizontalAlignment="Right"
+                                           Style="{StaticResource ICamReadoutTextStyle}" />
+                            </Grid>
+                            <Slider x:Name="ContrastSlider" Minimum="-1" Maximum="1"
+                                    StepFrequency="0.05" ValueChanged="OnContrastChanged" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="6">
+                            <Grid>
+                                <TextBlock Text="Saturation"
+                                           Style="{StaticResource CaptionTextBlockStyle}" />
+                                <TextBlock x:Name="SaturationReadout" Text="0.00"
+                                           HorizontalAlignment="Right"
+                                           Style="{StaticResource ICamReadoutTextStyle}" />
+                            </Grid>
+                            <Slider x:Name="SaturationSlider" Minimum="-1" Maximum="1"
+                                    StepFrequency="0.05" ValueChanged="OnSaturationChanged" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="6">
+                            <Grid>
+                                <TextBlock Text="Warmth"
+                                           Style="{StaticResource CaptionTextBlockStyle}" />
+                                <TextBlock x:Name="WarmthReadout" Text="0.00"
+                                           HorizontalAlignment="Right"
+                                           Style="{StaticResource ICamReadoutTextStyle}" />
+                            </Grid>
+                            <Slider x:Name="WarmthSlider" Minimum="-1" Maximum="1"
+                                    StepFrequency="0.05" ValueChanged="OnWarmthChanged" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="6">
+                            <Grid>
+                                <TextBlock Text="Sharpness"
+                                           Style="{StaticResource CaptionTextBlockStyle}" />
+                                <TextBlock x:Name="SharpnessReadout" Text="0.00"
+                                           HorizontalAlignment="Right"
+                                           Style="{StaticResource ICamReadoutTextStyle}" />
+                            </Grid>
+                            <Slider x:Name="SharpnessSlider" Minimum="-1" Maximum="1"
+                                    StepFrequency="0.05" ValueChanged="OnSharpnessChanged" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Text="These change the preview and iCam Camera. The recording on your iPhone keeps the untouched picture." />
+
                     <ToggleSwitch x:Name="TorchToggle" Header="Torch"
                                   Toggled="OnTorchToggled" />
 

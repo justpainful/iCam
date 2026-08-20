@@ -231,6 +231,9 @@ public class ConformanceTests
                     Assert.Equal(184ul, state.Version);
                     Assert.Equal(VideoCodec.Hevc, state.Codec);
                     Assert.Equal(120, state.ShutterDenominator);
+                    Assert.Equal(0.25, state.Brightness);
+                    Assert.Equal(0.35, state.Warmth);
+                    Assert.Equal(-0.2, state.Sharpness);
                     // Re-encoding must produce the same tree, so the phone can
                     // echo a state without altering it.
                     Assert.Equal(

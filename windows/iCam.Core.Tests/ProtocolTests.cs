@@ -608,7 +608,8 @@ public class ControlCodecTests
          "whiteBalanceMode":"auto","whiteBalancePreset":"auto","temperature":4800,
          "tint":0,"focusMode":"continuous","focusPosition":0.42,"focusLocked":false,
          "faceDrivenFocus":true,"torch":"off","torchLevel":1.0,"mirrored":false,
-         "orientation":"auto","brightness":0,"contrast":0,"saturation":0,"sharpness":0}
+         "orientation":"auto","brightness":0,"contrast":0,"saturation":0,"warmth":0,
+         "sharpness":0}
         """;
 
         var state = JsonSerializer.Deserialize<CameraState>(json, ControlCodec.Options)!;

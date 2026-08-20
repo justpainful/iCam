@@ -330,8 +330,18 @@ commands. Every state carries a version:
   "whiteBalanceMode":"auto", "temperature":4800, "tint":0,
   "focusMode":"continuous", "focusPosition":0.42, "focusLocked":false,
   "stabilization":"standard", "torch":"off", "torchLevel":1.0,
-  "mirrored":false, "orientation":"auto" }
+  "mirrored":false, "orientation":"auto",
+  "brightness":0.0, "contrast":0.0, "saturation":0.0, "warmth":0.0,
+  "sharpness":0.0 }
 ```
+
+The last five are the **image controls**, and they are the one part of this
+state the phone does not act on. Each runs `-1.0` to `+1.0` and means "leave it
+alone" at `0.0`. They live here rather than in a message of their own because
+both ends must show the same five sliders, and because they are settings the
+user expects to survive a reconnect — but they are applied by the PC, to the
+preview and to `iCam Camera`, and never to the master recording. See
+`docs/ARCHITECTURE.md`.
 
 ### 5.4 `camera.command`
 

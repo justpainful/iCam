@@ -214,6 +214,13 @@ final class ConformanceTests: XCTestCase {
         XCTAssertEqual(state.orientation, .landscapeLeft)
         XCTAssertEqual(state.shutterDenominator, 120)
 
+        // The image controls are carried, not applied, on this side.
+        XCTAssertEqual(state.brightness, 0.25)
+        XCTAssertEqual(state.contrast, -0.1)
+        XCTAssertEqual(state.saturation, 0.5)
+        XCTAssertEqual(state.warmth, 0.35)
+        XCTAssertEqual(state.sharpness, -0.2)
+
         // And round-trips back to the same tree, so the phone can echo a state
         // the PC sent without altering it.
         let reencoded = try ControlCodec.encoder.encode(state)
