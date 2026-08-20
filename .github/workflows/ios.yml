@@ -51,24 +51,10 @@ jobs:
       - name: Pick a simulator
         id: simulator
         run: |
-          # Take any available iPhone runtime rather than pinning a model that
-          # a future runner image may not ship.
-          device=$(xcrun simctl list devices available --json \
-            | python3 -c "
-import json,sys
-data = json.load(sys.stdin)['devices']
-best = None
-for runtime, devices in data.items():
-    if 'iOS' not in runtime:
-        continue
-    for device in devices:
-        if device['isAvailable'] and 'iPhone' in device['name']:
-            best = device['name']
-            break
-    if best:
-        break
-print(best or 'iPhone 16')
-")
+          # Take whatever iPhone runtime the runner image ships rather than
+          # pinning a model a future image may drop.
+          device=$(xcrun simctl list devices available             | grep -Eo '^ +iPhone [^(]+'             | sed 's/^ *//; s/ *$//'             | head -1)
+          if [ -z "$device" ]; then device="iPhone 16"; fi
           echo "Simulator: $device"
           echo "name=$device" >> "$GITHUB_OUTPUT"
 
