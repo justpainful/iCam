@@ -3,7 +3,6 @@ using ICam.Core.Media;
 using ICam.Core.Protocol;
 using Windows.Media.Core;
 using Windows.Media.MediaProperties;
-using Windows.Security.Cryptography;
 using Windows.Storage.Streams;
 
 namespace ICam.App.Services;
@@ -196,9 +195,7 @@ public sealed class VideoPipeline : IDisposable
             }
 
             var offsetUs = frame.PtsUs >= _firstPtsUs ? frame.PtsUs - _firstPtsUs : 0;
-            // `AsBuffer` is a .NET Framework era extension that modern .NET
-            // does not carry; this is the projected equivalent.
-            var buffer = CryptographicBuffer.CreateFromByteArray(frame.Data);
+            var buffer = frame.Data.AsBuffer();
             var sample = MediaStreamSample.CreateFromBuffer(
                 buffer, TimeSpan.FromTicks((long)(offsetUs * 10)));
             sample.KeyFrame = frame.IsKeyframe;

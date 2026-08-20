@@ -5,7 +5,6 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives"
     mc:Ignorable="d">
 
     <Grid Padding="16,8,16,16">
@@ -97,13 +96,13 @@
                     </StackPanel>
                 </Button>
 
-                <primitives:ToggleButton x:Name="StreamToggle" Click="OnToggleStreaming" IsEnabled="False"
+                <ToggleButton x:Name="StreamToggle" Click="OnToggleStreaming" IsEnabled="False"
                               Padding="18,9">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xE714;" FontSize="15" />
                         <TextBlock Text="iCam Camera" />
                     </StackPanel>
-                </primitives:ToggleButton>
+                </ToggleButton>
             </StackPanel>
         </Grid>
 
@@ -111,9 +110,7 @@
         <Border Grid.Column="1" Width="308" Margin="16,0,0,0"
                 Style="{StaticResource ICamPanelStyle}" Padding="0">
             <ScrollViewer Padding="16" VerticalScrollBarVisibility="Auto">
-                <ContentControl x:Name="Inspector" IsEnabled="False"
-                                HorizontalContentAlignment="Stretch">
-                <StackPanel Spacing="18">
+                <StackPanel Spacing="18" x:Name="Inspector" IsEnabled="False">
 
                     <TextBlock Text="CAMERA" Style="{StaticResource ICamSectionHeaderStyle}" />
 
@@ -245,7 +242,6 @@
                         </StackPanel>
                     </Border>
                 </StackPanel>
-                </ContentControl>
             </ScrollViewer>
         </Border>
     </Grid>

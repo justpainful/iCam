@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="ICam.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--
+            A custom title bar, but with the real system buttons. Minimise,
+            maximise and close stay exactly where Windows puts them and behave
+            exactly as Windows expects, including Snap on hover.
+        -->
+        <Grid x:Name="TitleBar" Grid.Row="0" Height="40" Padding="12,0,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Image Grid.Column="0" Source="ms-appx:///Assets/Square44x44Logo.targetsize-24.png"
+                   Width="18" Height="18" VerticalAlignment="Center" />
+
+            <TextBlock Grid.Column="1" Text="iCam" Margin="10,0,0,0"
+                       VerticalAlignment="Center"
+                       Style="{StaticResource CaptionTextBlockStyle}" />
+
+            <!-- The one piece of live status in the title bar, so the rest of
+                 the window can stay quiet. -->
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8"
+                        VerticalAlignment="Center" Margin="0,0,140,0"
+                        x:Name="TitleStatusPanel">
+                <Ellipse x:Name="StatusDot" Width="8" Height="8"
+                         Fill="{ThemeResource TextFillColorTertiaryBrush}" />
+                <TextBlock x:Name="StatusText" Text="No iPhone connected"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </Grid>
+
+        <NavigationView x:Name="Navigation" Grid.Row="1"
+                        PaneDisplayMode="LeftCompact"
+                        IsBackButtonVisible="Collapsed"
+                        IsSettingsVisible="False"
+                        OpenPaneLength="200"
+                        CompactModeThresholdWidth="0"
+                        ExpandedModeThresholdWidth="1100"
+                        SelectionChanged="OnNavigationSelectionChanged">
+
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="Camera" Tag="camera" IsSelected="True">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE722;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Library" Tag="library">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8B7;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Devices" Tag="devices">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8CC;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="Settings" Tag="settings">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE713;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
+
+            <Frame x:Name="ContentFrame" />
+        </NavigationView>
+
+        <!-- Pairing is modal on purpose: comparing six digits is the one moment
+             the user genuinely must not skip past. -->
+        <ContentDialog x:Name="PairingDialog"
+                       Title="Pair with this iPhone"
+                       PrimaryButtonText="They match"
+                       CloseButtonText="Cancel"
+                       DefaultButton="Primary" />
+    </Grid>
+</Window>

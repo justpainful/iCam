@@ -41,9 +41,6 @@
             <Border Grid.Row="1" CornerRadius="8" Background="{ThemeResource ICamStageBrush}"
                     BorderBrush="{ThemeResource ICamHairlineBrush}" BorderThickness="1">
                 <Grid>
-                    <MediaPlayerElement x:Name="Preview"
-                                        Stretch="Uniform"
-                                        AreTransportControlsEnabled="False" />
 
                     <!-- Every empty state is designed. This one tells the user
                          exactly what to do next. -->
@@ -111,9 +108,7 @@
         <Border Grid.Column="1" Width="308" Margin="16,0,0,0"
                 Style="{StaticResource ICamPanelStyle}" Padding="0">
             <ScrollViewer Padding="16" VerticalScrollBarVisibility="Auto">
-                <ContentControl x:Name="Inspector" IsEnabled="False"
-                                HorizontalContentAlignment="Stretch">
-                <StackPanel Spacing="18">
+                <StackPanel Spacing="18" x:Name="Inspector" IsEnabled="False">
 
                     <TextBlock Text="CAMERA" Style="{StaticResource ICamSectionHeaderStyle}" />
 
@@ -245,7 +240,6 @@
                         </StackPanel>
                     </Border>
                 </StackPanel>
-                </ContentControl>
             </ScrollViewer>
         </Border>
     </Grid>

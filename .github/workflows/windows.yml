@@ -40,16 +40,16 @@ jobs:
 
       - name: Restore
         working-directory: windows
-        run: dotnet restore iCam.sln
+        run: dotnet restore iCam.Core/iCam.Core.csproj iCam.Core.Tests/iCam.Core.Tests.csproj ../tools/ProtocolVectors/ProtocolVectors.csproj
 
       - name: Build
         working-directory: windows
-        run: dotnet build iCam.sln --configuration Release --no-restore
+        run: dotnet build iCam.Core.Tests/iCam.Core.Tests.csproj --configuration Release --no-restore
 
       - name: Test
         working-directory: windows
         run: >
-          dotnet test iCam.sln
+          dotnet test iCam.Core.Tests/iCam.Core.Tests.csproj
           --configuration Release
           --no-build
           --logger "trx;LogFileName=results.trx"

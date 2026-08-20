@@ -4,7 +4,6 @@ using ICam.Core.Protocol;
 using ICam.Core.Transport;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.Media.Core;
 using Windows.Media.Playback;

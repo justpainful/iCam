@@ -15,13 +15,12 @@
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
-    <!-- Unpackaged by default: download, install, open. A packaged build is
-         produced separately for the virtual-camera components, which do need
-         registration. -->
+    <!-- Unpackaged: download, install, open. The virtual-camera component is
+         packaged and registered separately, because that is the only part that
+         genuinely needs registration. -->
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
-    <PublishReadyToRun>false</PublishReadyToRun>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <NoWarn>$(NoWarn);CA1416</NoWarn>
@@ -30,6 +29,10 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
+    <!-- DPAPI is not in the base library on modern .NET. The identity key is
+         protected with it so it is readable by this user on this machine and
+         by nobody else. -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -37,7 +40,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Assets\**" />
+    <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
