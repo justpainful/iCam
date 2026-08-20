@@ -446,15 +446,17 @@ final class PeerLink: ObservableObject {
         }
     }
 
-    @discardableResult
-    private func sendFrame(channel: Channel, payload: Data, isMedia: Bool) -> Bool {
-        guard let secure = self.channel, status.isConnected else { return false }
-        guard let sealed = try? secure.seal(channel: channel, plaintext: payload) else { return false }
+    private func sendFrame(channel: Channel, payload: Data, isMedia: Bool) {
+        guard let secure = self.channel, status.isConnected else { return }
+        guard let sealed = try? secure.seal(channel: channel, plaintext: payload) else { return }
+        // By this point the frame is sealed and the counter has moved, so it
+        // must go out — the admission decision already happened, before the
+        // seal, in the callers that carry media.
         if isMedia {
-            return transport.sendMedia(sealed)
+            transport.sendMedia(sealed)
+        } else {
+            transport.send(sealed)
         }
-        transport.send(sealed)
-        return true
     }
 
     private func nextId() -> UInt32 {
