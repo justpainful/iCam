@@ -1,154 +1,82 @@
-using ICam.Core.Protocol;
+using Windows.Media.Playback;
 
 namespace ICam.App.Services;
 
 /// <summary>
 /// <c>iCam Camera</c> — the device other Windows applications see.
 ///
-/// The design that matters is the decoupling. The virtual camera is a separate
-/// out-of-process COM server registered through <c>MFCreateVirtualCamera</c>,
-/// and it reads frames from a named shared-memory ring that iCam writes into.
-/// That is why closing the iCam window does not make the camera vanish from the
-/// middle of a Zoom call — the two are not the same process, and the camera
-/// does not depend on the window existing.
+/// Three pieces, deliberately separate:
 ///
-/// This class is the managed half: it owns the ring, reports what is installed,
-/// and drives registration. The frame source itself is native, in
-/// <c>windows/iCam.VirtualCamera</c>.
+/// - <see cref="VirtualCameraHost"/> registers the camera with Windows and
+///   holds it open.
+/// - <see cref="VirtualCameraPipe"/> is the link to the DLL that Windows loads
+///   into its Frame Server.
+/// - <see cref="VirtualCameraFeed"/> turns decoded iPhone frames into NV12 and
+///   pushes them down that pipe.
+///
+/// The important property is that they do not depend on each other's state. The
+/// camera can be registered with no iPhone connected, the pipe can be open with
+/// nothing to send, and in both cases the DLL draws its own holding card. A
+/// consumer never sees a black frame or an error, only a picture that explains
+/// itself. See <c>docs/VIRTUAL-CAMERA.md</c>.
 /// </summary>
-public sealed class VirtualCameraService : IDisposable
+public sealed class VirtualCameraService : IAsyncDisposable
 {
-    public enum InstallState
+    private readonly VirtualCameraHost _host = new();
+    private readonly VirtualCameraPipe _pipe = new();
+    private readonly VirtualCameraFeed _feed;
+
+    public VirtualCameraService()
     {
-        /// <summary>Not registered on this computer yet.</summary>
-        NotInstalled,
-        /// <summary>Registered and available to other applications.</summary>
-        Installed,
-        /// <summary>Registration needs elevation the user has not granted.</summary>
-        NeedsElevation,
-        /// <summary>This build of Windows does not offer the virtual camera API.</summary>
-        Unsupported,
+        _feed = new VirtualCameraFeed(_pipe);
+        _host.StateChanged += () => StateChanged?.Invoke();
+        _pipe.ConnectionChanged += _ => StateChanged?.Invoke();
     }
-
-    /// <summary>
-    /// <c>MFCreateVirtualCamera</c> arrived in Windows 11 21H2. On anything
-    /// older iCam still works as a camera and as a remote control; only the
-    /// virtual device is unavailable, and the interface says so plainly rather
-    /// than offering a button that cannot work.
-    /// </summary>
-    public static bool IsSupportedByThisWindows =>
-        OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
-
-    private readonly FrameRing _ring = new();
-
-    public InstallState State { get; private set; } =
-        IsSupportedByThisWindows ? InstallState.NotInstalled : InstallState.Unsupported;
-
-    public bool IsRunning { get; private set; }
-    public ulong FramesPublished { get; private set; }
 
     public event Action? StateChanged;
 
-    /// <summary>
-    /// Hands one decoded frame to whatever is consuming <c>iCam Camera</c>.
-    /// Frames are dropped rather than queued when the consumer is behind: a
-    /// conferencing app would rather skip a frame than fall behind the audio.
-    /// </summary>
-    public void Publish(ReadOnlySpan<byte> nv12, int width, int height, ulong ptsUs)
-    {
-        if (!IsRunning) return;
-        if (_ring.TryWrite(nv12, width, height, ptsUs)) FramesPublished++;
-    }
+    public bool IsRunning => _host.IsRunning;
 
-    public void Start(StreamProfile profile)
+    /// <summary>True once Windows has actually opened the camera in some app.</summary>
+    public bool IsInUse => _pipe.IsConnected;
+
+    public string? LastError => _host.LastError;
+
+    public static VirtualCameraHost.InstallState Installation =>
+        VirtualCameraHost.CheckInstallation();
+
+    public static bool IsSupportedByThisWindows => VirtualCameraHost.IsSupportedByThisWindows;
+
+    public ulong FramesDelivered => _feed.FramesDelivered;
+    public ulong FramesSkipped => _feed.FramesSkipped;
+
+    /// <summary>
+    /// Makes iCam Camera available. Safe to call when it is not installed: it
+    /// reports why through <see cref="LastError"/> rather than throwing.
+    /// </summary>
+    public bool Start()
     {
-        if (State != InstallState.Installed) return;
-        _ring.Open(profile.Width, profile.Height);
-        IsRunning = true;
-        Log.Media.Info($"iCam Camera publishing {profile.Width}x{profile.Height}");
-        StateChanged?.Invoke();
+        _pipe.Start();
+        return _host.Start();
     }
 
     public void Stop()
     {
-        if (!IsRunning) return;
-        IsRunning = false;
-        _ring.Close();
-        StateChanged?.Invoke();
+        _feed.Attach(null);
+        _host.Stop();
     }
 
-    public void Dispose()
+    /// <summary>
+    /// Points the camera at a decoded stream. <c>null</c> detaches, and the
+    /// DLL falls back to its holding card — which is why losing the iPhone
+    /// does not remove the camera from a call in progress.
+    /// </summary>
+    public void SetSource(MediaPlayer? player) => _feed.Attach(player);
+
+    public async ValueTask DisposeAsync()
     {
-        Stop();
-        _ring.Dispose();
+        _feed.Dispose();
+        _host.Dispose();
+        await _pipe.DisposeAsync().ConfigureAwait(false);
     }
-}
-
-/// <summary>
-/// The shared-memory ring between iCam and the virtual camera process.
-///
-/// Kept to a handful of NV12 frames. A ring that grows would only add latency
-/// to a live camera, and a ring that blocks would let a stuck consumer stall
-/// the whole media path.
-/// </summary>
-internal sealed class FrameRing : IDisposable
-{
-    private const int SlotCount = 3;
-
-    private System.IO.MemoryMappedFiles.MemoryMappedFile? _file;
-    private System.IO.MemoryMappedFiles.MemoryMappedViewAccessor? _view;
-    private EventWaitHandle? _frameReady;
-    private int _slotBytes;
-    private long _sequence;
-
-    public string Name { get; } = "Local\\iCam.Camera.Frames";
-
-    public void Open(int width, int height)
-    {
-        Close();
-
-        // NV12: one luma plane plus a half-height interleaved chroma plane.
-        _slotBytes = width * height * 3 / 2;
-        var total = HeaderBytes + (long)_slotBytes * SlotCount;
-
-        _file = System.IO.MemoryMappedFiles.MemoryMappedFile.CreateOrOpen(Name, total);
-        _view = _file.CreateViewAccessor(0, total);
-        _frameReady = new EventWaitHandle(false, EventResetMode.AutoReset,
-                                          "Local\\iCam.Camera.FrameReady");
-
-        _view.Write(0, width);
-        _view.Write(4, height);
-        _view.Write(8, SlotCount);
-        _view.Write(12, _slotBytes);
-    }
-
-    private const int HeaderBytes = 64;
-
-    public bool TryWrite(ReadOnlySpan<byte> nv12, int width, int height, ulong ptsUs)
-    {
-        if (_view is null || nv12.Length > _slotBytes) return false;
-
-        var slot = (int)(Interlocked.Increment(ref _sequence) % SlotCount);
-        var offset = HeaderBytes + (long)slot * _slotBytes;
-
-        _view.WriteArray(offset, nv12.ToArray(), 0, nv12.Length);
-        _view.Write(16, slot);
-        _view.Write(24, (long)ptsUs);
-        _view.Write(32, Interlocked.Read(ref _sequence));
-
-        _frameReady?.Set();
-        return true;
-    }
-
-    public void Close()
-    {
-        _view?.Dispose();
-        _view = null;
-        _file?.Dispose();
-        _file = null;
-        _frameReady?.Dispose();
-        _frameReady = null;
-    }
-
-    public void Dispose() => Close();
 }

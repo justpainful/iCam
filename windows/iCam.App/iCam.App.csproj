@@ -33,6 +33,10 @@
          protected with it so it is readable by this user on this machine and
          by nobody else. -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
+    <!-- Frame-server mode hands out frames as Direct3D surfaces. Win2D is the
+         supported way to read one back, and turns a page of fragile D3D
+         interop into three lines. -->
+    <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.3.2" />
   </ItemGroup>
 
   <ItemGroup>

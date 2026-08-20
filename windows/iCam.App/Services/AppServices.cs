@@ -36,12 +36,19 @@ public sealed class AppServices : IAsyncDisposable
         Listener.Failed += reason => Log.Net.Warn(reason);
     }
 
-    public Task StartAsync() => Listener.StartAsync();
+    public Task StartAsync()
+    {
+        // The camera comes up with the application, not with the first iPhone.
+        // Other apps should be able to select iCam Camera and see it explain
+        // itself, rather than find nothing in the list until a phone connects.
+        VirtualCamera.Start();
+        return Listener.StartAsync();
+    }
 
     public async ValueTask DisposeAsync()
     {
         await Listener.DisposeAsync();
-        VirtualCamera.Dispose();
+        await VirtualCamera.DisposeAsync();
         Identity.Dispose();
     }
 
