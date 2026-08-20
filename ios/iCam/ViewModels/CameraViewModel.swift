@@ -402,6 +402,12 @@ final class CameraViewModel: ObservableObject {
             stream.reconfigure(profile: payload.profile)
             link?.currentVideoCodec = payload.profile.codec
 
+        case ControlType.streamKeyframe:
+            // The PC's decoder lost its place — usually a network burst it
+            // could not swallow. An IDR now costs a bitrate spike; the frozen
+            // preview it ends costs the user's trust.
+            stream.requestKeyframe()
+
         case ControlType.photoCapture:
             capturePhoto()
 

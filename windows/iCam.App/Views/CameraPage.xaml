@@ -302,27 +302,37 @@
                                     StepFrequency="0.05" ValueChanged="OnSharpnessChanged" />
                         </StackPanel>
 
-                        <StackPanel Spacing="6">
+                        <!-- A switch first, like the tool this one replaces:
+                             on means a strength that flatters, off means off.
+                             The level appears only once it is on, for whoever
+                             wants finer control than a switch can give. -->
+                        <ToggleSwitch x:Name="LowLightToggle" Header="Low Light Boost"
+                                      Toggled="OnLowLightToggled" />
+                        <StackPanel x:Name="LowLightLevelPanel" Spacing="6"
+                                    Visibility="Collapsed">
                             <Grid>
-                                <TextBlock Text="Low Light Boost"
+                                <TextBlock Text="Boost Strength"
                                            Style="{StaticResource CaptionTextBlockStyle}" />
-                                <TextBlock x:Name="LowLightReadout" Text="0%"
+                                <TextBlock x:Name="LowLightReadout" Text="60%"
                                            HorizontalAlignment="Right"
                                            Style="{StaticResource ICamReadoutTextStyle}" />
                             </Grid>
-                            <Slider x:Name="LowLightSlider" Minimum="0" Maximum="1"
+                            <Slider x:Name="LowLightSlider" Minimum="0.05" Maximum="1"
                                     StepFrequency="0.05" ValueChanged="OnLowLightChanged" />
                         </StackPanel>
 
-                        <StackPanel Spacing="6">
+                        <ToggleSwitch x:Name="BeautyToggle" Header="Beauty"
+                                      Toggled="OnBeautyToggled" />
+                        <StackPanel x:Name="BeautyLevelPanel" Spacing="6"
+                                    Visibility="Collapsed">
                             <Grid>
-                                <TextBlock Text="Beauty"
+                                <TextBlock Text="Smoothing Strength"
                                            Style="{StaticResource CaptionTextBlockStyle}" />
-                                <TextBlock x:Name="BeautyReadout" Text="0%"
+                                <TextBlock x:Name="BeautyReadout" Text="60%"
                                            HorizontalAlignment="Right"
                                            Style="{StaticResource ICamReadoutTextStyle}" />
                             </Grid>
-                            <Slider x:Name="BeautySlider" Minimum="0" Maximum="1"
+                            <Slider x:Name="BeautySlider" Minimum="0.05" Maximum="1"
                                     StepFrequency="0.05" ValueChanged="OnBeautyChanged" />
                         </StackPanel>
                     </StackPanel>

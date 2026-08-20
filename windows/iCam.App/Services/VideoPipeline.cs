@@ -22,11 +22,15 @@ namespace ICam.App.Services;
 public sealed class VideoPipeline : IDisposable
 {
     /// <summary>
-    /// At 30 fps this is 66 ms of slack, and no more. Every queued frame is
-    /// latency the viewer watches; a live preview would always rather drop
-    /// one than wear it.
+    /// Burst absorption, not steady-state latency: samples are stamped at
+    /// arrival, so the player drains a backlog as fast as it can decode
+    /// rather than pacing it out. The queue only ever holds frames during a
+    /// network burst or a decode stall — and it must hold them, because
+    /// compressed video cannot lose a frame quietly. Every frame references
+    /// the one before it; drop one mid-group and the decoder smears
+    /// everything until the next keyframe.
     /// </summary>
-    private const int MaxQueuedFrames = 2;
+    private const int MaxQueuedFrames = 8;
 
     private readonly FrameQueue _frames = new(MaxQueuedFrames);
     private readonly Lock _lock = new();
@@ -64,6 +68,16 @@ public sealed class VideoPipeline : IDisposable
 
     /// <summary>Raised when a new source is built and the player must be re-pointed.</summary>
     public event Action<MediaStreamSource>? SourceChanged;
+
+    /// <summary>
+    /// Raised when the pipeline has had to throw the picture away and can only
+    /// start again from a keyframe. Whoever is listening should ask the phone
+    /// for one, because the alternative is freezing until the next scheduled
+    /// keyframe wanders by.
+    /// </summary>
+    public event Action? KeyframeNeeded;
+
+    private long _lastKeyframeAskTicks;
 
     /// <summary>
     /// Called for a frame carrying codec configuration. Until this arrives
@@ -118,6 +132,8 @@ public sealed class VideoPipeline : IDisposable
             if (header.IsKeyframe) _awaitingKeyframe = false;
         }
 
+        var droppedBefore = _frames.Dropped;
+
         var annexB = BitstreamConverter.AvccToAnnexB(avcc.Span, configuration.NalLengthSize);
         if (annexB.Length == 0) return;
 
@@ -132,6 +148,28 @@ public sealed class VideoPipeline : IDisposable
         }
 
         _frames.Enqueue(new QueuedFrame(annexB, header.PtsUs, header.IsKeyframe));
+
+        // If that push evicted anything, the decoder has a hole in its
+        // reference chain and every frame it decodes from here is a smear of
+        // the last good picture. Stop feeding it, hold the last clean frame,
+        // and start again at the next keyframe — asked for now rather than
+        // waited for.
+        if (_frames.Dropped != droppedBefore)
+        {
+            lock (_lock)
+            {
+                _awaitingKeyframe = true;
+            }
+            _frames.Clear();
+
+            var now = Environment.TickCount64;
+            if (now - Interlocked.Read(ref _lastKeyframeAskTicks) > 1000)
+            {
+                Interlocked.Exchange(ref _lastKeyframeAskTicks, now);
+                Log.Media.Info("Decode fell behind; resynchronising at the next keyframe");
+                KeyframeNeeded?.Invoke();
+            }
+        }
     }
 
     public void Reset()

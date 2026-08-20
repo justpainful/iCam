@@ -63,6 +63,12 @@ public sealed partial class ConnectedDevice : System.ComponentModel.INotifyPrope
         session.ControlReceived += OnControl;
         session.VideoReceived += OnVideo;
         session.StateChanged += state => Post(() => SessionState = state);
+
+        // When the pipeline has to resynchronise, the phone can end the freeze
+        // in one round trip instead of whenever the next scheduled keyframe
+        // happens to arrive. A phone that predates the message ignores it.
+        Video.KeyframeNeeded += () =>
+            _ = Session.SendControlAsync(ControlType.StreamKeyframe, new { });
     }
 
     public string Name

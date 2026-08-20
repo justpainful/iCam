@@ -29,6 +29,8 @@ enum ControlType {
     static let streamStop   = "stream.stop"
     static let streamConfig = "stream.config"
     static let streamStatus = "stream.status"
+    /// PC → phone: the decoder lost its place; send an IDR now.
+    static let streamKeyframe = "stream.keyframe"
 
     static let recordStart  = "record.start"
     static let recordStop   = "record.stop"

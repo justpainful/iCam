@@ -18,6 +18,8 @@ public static class ControlType
     public const string StreamStop = "stream.stop";
     public const string StreamConfig = "stream.config";
     public const string StreamStatus = "stream.status";
+    /// <summary>PC → phone: the decoder lost its place; send an IDR now.</summary>
+    public const string StreamKeyframe = "stream.keyframe";
 
     public const string RecordStart = "record.start";
     public const string RecordStop = "record.stop";

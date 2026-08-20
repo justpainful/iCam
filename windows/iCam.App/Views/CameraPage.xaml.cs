@@ -360,9 +360,15 @@ public sealed partial class CameraPage : Page
         if (_device is null) return;
 
         DeviceName.Text = _device.Name;
-        var state = _device.State;
-        DeviceSummary.Text = $"{Describe(state.Width, state.Height)} · {state.Fps} · "
-                           + (state.Codec == VideoCodec.Hevc ? "HEVC" : "H.264");
+        // The badge describes what this window is receiving — the stream —
+        // not the phone's recording settings. Showing the recording's HEVC
+        // next to the stream's resolution sent one debugging session down the
+        // wrong road entirely.
+        var profile = _device.StreamProfile;
+        DeviceSummary.Text = _device.IsStreaming
+            ? $"{Describe(profile.Width, profile.Height)} · {profile.Fps} · "
+              + (profile.Codec == VideoCodec.Hevc ? "HEVC" : "H.264")
+            : "not streaming";
         DeviceBadge.Visibility = Visibility.Visible;
         StreamToggle.IsChecked = _device.IsStreaming;
     }
@@ -502,8 +508,15 @@ public sealed partial class CameraPage : Page
             SaturationSlider.Value = state.Saturation;
             WarmthSlider.Value = state.Warmth;
             SharpnessSlider.Value = state.Sharpness;
-            LowLightSlider.Value = state.LowLight;
-            BeautySlider.Value = state.Beauty;
+            LowLightToggle.IsOn = state.LowLight > 0;
+            LowLightLevelPanel.Visibility = state.LowLight > 0
+                ? Visibility.Visible : Visibility.Collapsed;
+            if (state.LowLight > 0) LowLightSlider.Value = state.LowLight;
+
+            BeautyToggle.IsOn = state.Beauty > 0;
+            BeautyLevelPanel.Visibility = state.Beauty > 0
+                ? Visibility.Visible : Visibility.Collapsed;
+            if (state.Beauty > 0) BeautySlider.Value = state.Beauty;
 
             BrightnessReadout.Text = Describe(state.Brightness);
             ContrastReadout.Text = Describe(state.Contrast);
@@ -681,43 +694,88 @@ public sealed partial class CameraPage : Page
     private void OnBrightnessChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         BrightnessReadout.Text = Describe(e.NewValue);
-        Send(m => m.Brightness = Math.Round(e.NewValue, 2));
+        var value = Math.Round(e.NewValue, 2);
+        SendImage(m => m.Brightness = value, a => a with { Brightness = value });
     }
 
     private void OnContrastChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         ContrastReadout.Text = Describe(e.NewValue);
-        Send(m => m.Contrast = Math.Round(e.NewValue, 2));
+        var value = Math.Round(e.NewValue, 2);
+        SendImage(m => m.Contrast = value, a => a with { Contrast = value });
     }
 
     private void OnSaturationChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         SaturationReadout.Text = Describe(e.NewValue);
-        Send(m => m.Saturation = Math.Round(e.NewValue, 2));
+        var value = Math.Round(e.NewValue, 2);
+        SendImage(m => m.Saturation = value, a => a with { Saturation = value });
     }
 
     private void OnWarmthChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         WarmthReadout.Text = Describe(e.NewValue);
-        Send(m => m.Warmth = Math.Round(e.NewValue, 2));
+        var value = Math.Round(e.NewValue, 2);
+        SendImage(m => m.Warmth = value, a => a with { Warmth = value });
     }
 
     private void OnSharpnessChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         SharpnessReadout.Text = Describe(e.NewValue);
-        Send(m => m.Sharpness = Math.Round(e.NewValue, 2));
+        var value = Math.Round(e.NewValue, 2);
+        SendImage(m => m.Sharpness = value, a => a with { Sharpness = value });
+    }
+
+    /// <summary>What the switch means by "on". Strong enough to see, mild enough to trust.</summary>
+    private const double DefaultEffectStrength = 0.6;
+
+    private void OnLowLightToggled(object sender, RoutedEventArgs e)
+    {
+        if (_updatingFromState) return;
+        var value = LowLightToggle.IsOn ? DefaultEffectStrength : 0;
+        SendImage(m => m.LowLight = value, a => a with { LowLight = value });
+        LowLightLevelPanel.Visibility = LowLightToggle.IsOn
+            ? Visibility.Visible : Visibility.Collapsed;
+        if (LowLightToggle.IsOn) LowLightSlider.Value = value;
+    }
+
+    private void OnBeautyToggled(object sender, RoutedEventArgs e)
+    {
+        if (_updatingFromState) return;
+        var value = BeautyToggle.IsOn ? DefaultEffectStrength : 0;
+        SendImage(m => m.Beauty = value, a => a with { Beauty = value });
+        BeautyLevelPanel.Visibility = BeautyToggle.IsOn
+            ? Visibility.Visible : Visibility.Collapsed;
+        if (BeautyToggle.IsOn) BeautySlider.Value = value;
     }
 
     private void OnLowLightChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         LowLightReadout.Text = DescribePercent(e.NewValue);
-        Send(m => m.LowLight = Math.Round(e.NewValue, 2));
+        var value = Math.Round(e.NewValue, 2);
+        SendImage(m => m.LowLight = value, a => a with { LowLight = value });
     }
 
     private void OnBeautyChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         BeautyReadout.Text = DescribePercent(e.NewValue);
-        Send(m => m.Beauty = Math.Round(e.NewValue, 2));
+        var value = Math.Round(e.NewValue, 2);
+        SendImage(m => m.Beauty = value, a => a with { Beauty = value });
+    }
+
+    /// <summary>
+    /// An image control both *asks* the phone to remember the value and
+    /// applies it here, now. The grading happens on this computer, so there is
+    /// no reason the user should wait a network round trip to see their own
+    /// slider move — the echo only confirms what the picture already shows.
+    /// </summary>
+    private void SendImage(Action<CameraMutation> build,
+                           Func<ICam.Core.Media.ImageAdjustments,
+                                ICam.Core.Media.ImageAdjustments> apply)
+    {
+        if (_updatingFromState || _device is null) return;
+        _device.Image.Adjustments = apply(_device.Image.Adjustments);
+        Send(build);
     }
 
     private static string DescribePercent(double value) => $"{value * 100:0}%";
@@ -726,7 +784,12 @@ public sealed partial class CameraPage : Page
     /// All of them in one mutation, so they come back together as a single
     /// state rather than as seven the phone has to reconcile in turn.
     /// </summary>
-    private void OnResetImage(object sender, RoutedEventArgs e) =>
+    private void OnResetImage(object sender, RoutedEventArgs e)
+    {
+        if (_device is not null)
+        {
+            _device.Image.Adjustments = ICam.Core.Media.ImageAdjustments.None;
+        }
         Send(m =>
         {
             m.Brightness = 0;
@@ -737,6 +800,7 @@ public sealed partial class CameraPage : Page
             m.LowLight = 0;
             m.Beauty = 0;
         });
+    }
 
     /// <summary>
     /// Sends one mutation carrying only what this control touched. That is what
