@@ -27,18 +27,18 @@ struct ExposureController {
     @discardableResult
     static func setAuto(_ device: AVCaptureDevice) -> Bool {
         guard device.isExposureModeSupported(.continuousAutoExposure) else { return false }
-        return DeviceLock.with(device) { d in
+        return DeviceLock.perform(device) { d in
             d.exposureMode = .continuousAutoExposure
-        } != nil
+        }
     }
 
     /// Locks exposure at whatever the sensor is doing right now.
     @discardableResult
     static func lock(_ device: AVCaptureDevice) -> Bool {
         guard device.isExposureModeSupported(.locked) else { return false }
-        return DeviceLock.with(device) { d in
+        return DeviceLock.perform(device) { d in
             d.exposureMode = .locked
-        } != nil
+        }
     }
 
     /// Applies manual ISO and shutter together — the device requires both in
@@ -77,12 +77,12 @@ struct ExposureController {
     @discardableResult
     static func setPointOfInterest(_ device: AVCaptureDevice, _ point: CGPoint) -> Bool {
         guard device.isExposurePointOfInterestSupported else { return false }
-        return DeviceLock.with(device) { d in
+        return DeviceLock.perform(device) { d in
             d.exposurePointOfInterest = point
             if d.isExposureModeSupported(.continuousAutoExposure) {
                 d.exposureMode = .continuousAutoExposure
             }
-        } != nil
+        }
     }
 
     /// Values to show as shutter stops. Filtered to what the format allows, so

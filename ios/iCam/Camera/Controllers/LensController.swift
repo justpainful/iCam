@@ -50,7 +50,7 @@ struct LensController {
     }
 
     static func cancelRamp(_ device: AVCaptureDevice) {
-        DeviceLock.with(device) { d in
+        DeviceLock.perform(device) { d in
             if d.isRampingVideoZoom { d.cancelVideoZoomRamp() }
         }
     }

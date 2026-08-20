@@ -12,17 +12,17 @@ struct WhiteBalanceController {
     @discardableResult
     static func setAuto(_ device: AVCaptureDevice) -> Bool {
         guard device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) else { return false }
-        return DeviceLock.with(device) { d in
+        return DeviceLock.perform(device) { d in
             d.whiteBalanceMode = .continuousAutoWhiteBalance
-        } != nil
+        }
     }
 
     @discardableResult
     static func lock(_ device: AVCaptureDevice) -> Bool {
         guard device.isWhiteBalanceModeSupported(.locked) else { return false }
-        return DeviceLock.with(device) { d in
+        return DeviceLock.perform(device) { d in
             d.whiteBalanceMode = .locked
-        } != nil
+        }
     }
 
     /// Applies a colour temperature in kelvin and a tint.

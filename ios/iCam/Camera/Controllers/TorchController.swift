@@ -15,7 +15,7 @@ struct TorchController {
     static func apply(_ device: AVCaptureDevice, mode: TorchMode, level: Double) -> Bool {
         guard device.hasTorch else { return false }
 
-        return DeviceLock.with(device) { d in
+        return DeviceLock.perform(device) { d in
             switch mode {
             case .off:
                 if d.isTorchModeSupported(.off) { d.torchMode = .off }
@@ -29,7 +29,7 @@ struct TorchController {
                 // not something to swallow.
                 try d.setTorchModeOn(level: min(clamped, AVCaptureDevice.maxAvailableTorchLevel))
             }
-        } != nil
+        }
     }
 
     static func isOverheated(_ device: AVCaptureDevice) -> Bool {

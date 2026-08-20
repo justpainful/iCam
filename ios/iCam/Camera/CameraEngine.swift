@@ -402,7 +402,7 @@ final class CameraEngine: NSObject {
                 ? state.fps
                 : Int(CameraFormatManager.maxFrameRate(format))
 
-            DeviceLock.with(device) { d in
+            DeviceLock.perform(device) { d in
                 if d.activeFormat != format { d.activeFormat = format }
                 let duration = CMTime(value: 1, timescale: CMTimeScale(fps))
                 d.activeVideoMinFrameDuration = duration
