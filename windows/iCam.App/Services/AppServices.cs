@@ -23,6 +23,9 @@ public sealed class AppServices : IAsyncDisposable
     /// <summary>Decoded frames, produced once and read by both consumers.</summary>
     public DecodedFrameSource Frames { get; } = new();
 
+    /// <summary>The iPhone's microphone, played into a Windows render device.</summary>
+    public AudioRenderer Audio { get; } = new();
+
     public VirtualCameraService VirtualCamera { get; }
     public AppSettings Settings { get; } = new();
 
@@ -38,6 +41,12 @@ public sealed class AppServices : IAsyncDisposable
 
         Listener.SessionAccepted += Sessions.Add;
         Listener.Failed += reason => Log.Net.Warn(reason);
+
+        // The phone's microphone follows the phone: whichever device is
+        // connected feeds the audio path, and a phone that leaves takes its
+        // audio with it.
+        Sessions.DeviceAdded += device => device.Session.AudioReceived += Audio.Render;
+        Sessions.DeviceRemoved += device => device.Session.AudioReceived -= Audio.Render;
     }
 
     public Task StartAsync()
@@ -53,6 +62,7 @@ public sealed class AppServices : IAsyncDisposable
     {
         await Listener.DisposeAsync();
         await VirtualCamera.DisposeAsync();
+        await Audio.DisposeAsync();
         Frames.Dispose();
         Identity.Dispose();
     }

@@ -821,6 +821,7 @@ public sealed partial class CameraPage : Page
     {
         "720p30" => StreamProfile.Webcam720p30,
         "1080p60" => StreamProfile.Webcam1080p60,
+        "2160p30" => StreamProfile.Webcam2160p30,
         _ => StreamProfile.Webcam1080p30,
     };
 

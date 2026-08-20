@@ -137,7 +137,38 @@ final class PeerLink: ObservableObject {
 
     /// Sends one encoded video access unit, plus its parameter sets when the
     /// encoder produced new ones.
+    /// Set after the transport refuses a frame. Until a keyframe goes through,
+    /// sending anything else is worse than sending nothing: every inter frame
+    /// references the one the transport dropped, and the PC can only render
+    /// them as smear.
+    private var awaitingKeyframeAfterDrop = false
+    /// Fired when the encoder should produce a keyframe soon — the transport
+    /// dropped, and the wait for the next scheduled one is a frozen preview.
+    var onNeedsKeyframe: (() -> Void)?
+
+    /// Sealed-frame overhead: 8-byte framing header plus the AEAD tag.
+    private static let sealOverhead = 8 + 16
+
     func sendVideo(_ frame: StreamEncoder.EncodedFrame, sequence: UInt32) {
+        if awaitingKeyframeAfterDrop && !frame.isKeyframe {
+            transport.noteSkippedMedia()
+            return
+        }
+
+        // The whole decision happens *before anything is sealed*: the cipher's
+        // frame counter is implicit and strict on both ends, so a frame sealed
+        // and then dropped would desynchronise the channel permanently. The
+        // parameter sets and the frame travel or stay together for the same
+        // reason a keyframe without parameter sets is useless.
+        let cost = frame.data.count + (frame.parameterSets?.count ?? 0)
+                 + 2 * (VideoFrameHeader.size + Self.sealOverhead)
+        guard transport.canAcceptMedia(byteCount: cost) else {
+            transport.noteSkippedMedia()
+            awaitingKeyframeAfterDrop = true
+            onNeedsKeyframe?()
+            return
+        }
+
         if let parameterSets = frame.parameterSets {
             let header = VideoFrameHeader(codec: currentVideoCodec,
                                           isKeyframe: true,
@@ -159,9 +190,16 @@ final class PeerLink: ObservableObject {
         var payload = header.encoded
         payload.append(frame.data)
         sendFrame(channel: .video, payload: payload, isMedia: true)
+        awaitingKeyframeAfterDrop = false
     }
 
     func sendAudio(_ packet: AudioStreamer.Packet) {
+        // Checked before sealing, for the same counter reason as video.
+        guard transport.canAcceptMedia(byteCount: packet.data.count
+                                       + AudioFrameHeader.size + Self.sealOverhead) else {
+            transport.noteSkippedMedia()
+            return
+        }
         let header = AudioFrameHeader(codec: .pcmS16LE,
                                       channels: packet.channels,
                                       isParameterSets: false,
@@ -177,6 +215,12 @@ final class PeerLink: ObservableObject {
 
     var currentRttUs: UInt64 { timeSync.rttUs }
     var currentPendingBytes: Int { transport.pendingBytes }
+
+    /// The encoder's current bitrate, which sets how much video may wait in
+    /// the send queue — a time budget, priced in bytes.
+    func setPendingBudget(bitsPerSecond: Int) {
+        transport.setPendingBudget(bitsPerSecond: bitsPerSecond)
+    }
     var currentTransportDrops: UInt64 { transport.droppedFrames }
 
     // MARK: - Connection lifecycle
@@ -387,14 +431,15 @@ final class PeerLink: ObservableObject {
         }
     }
 
-    private func sendFrame(channel: Channel, payload: Data, isMedia: Bool) {
-        guard let secure = self.channel, status.isConnected else { return }
-        guard let sealed = try? secure.seal(channel: channel, plaintext: payload) else { return }
+    @discardableResult
+    private func sendFrame(channel: Channel, payload: Data, isMedia: Bool) -> Bool {
+        guard let secure = self.channel, status.isConnected else { return false }
+        guard let sealed = try? secure.seal(channel: channel, plaintext: payload) else { return false }
         if isMedia {
-            transport.sendMedia(sealed)
-        } else {
-            transport.send(sealed)
+            return transport.sendMedia(sealed)
         }
+        transport.send(sealed)
+        return true
     }
 
     private func nextId() -> UInt32 {

@@ -191,4 +191,12 @@ public sealed record StreamProfile
 
     public static StreamProfile Webcam1080p60 => new()
     { Width = 1920, Height = 1080, Fps = 60, Codec = VideoCodec.H264, Bitrate = 12_000_000 };
+
+    /// <summary>
+    /// H.264 rather than HEVC, deliberately: HEVC decode on Windows depends on
+    /// a store extension half the machines do not have, and a webcam that
+    /// only works on some computers is not a webcam.
+    /// </summary>
+    public static StreamProfile Webcam2160p30 => new()
+    { Width = 3840, Height = 2160, Fps = 30, Codec = VideoCodec.H264, Bitrate = 20_000_000 };
 }

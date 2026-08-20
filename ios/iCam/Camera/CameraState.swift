@@ -255,4 +255,8 @@ struct StreamProfile: Codable, Equatable, Sendable {
                                              codec: .h264, bitrate: 4_000_000)
     static let webcam1080p60 = StreamProfile(width: 1920, height: 1080, fps: 60,
                                              codec: .h264, bitrate: 12_000_000)
+    /// H.264 rather than HEVC — HEVC decode on Windows depends on a store
+    /// extension half the machines do not have.
+    static let webcam2160p30 = StreamProfile(width: 3840, height: 2160, fps: 30,
+                                             codec: .h264, bitrate: 20_000_000)
 }

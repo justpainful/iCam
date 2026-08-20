@@ -70,6 +70,9 @@ final class CameraViewModel: ObservableObject {
     // MARK: - Lifecycle
 
     func attach(link: PeerLink) {
+        link.onNeedsKeyframe = { [weak self] in
+            Task { @MainActor in self?.stream.requestKeyframe() }
+        }
         self.link = link
         link.onControl = { [weak self] envelope in self?.handle(control: envelope) }
         link.onReady = { [weak self] in self?.peerBecameReady() }
@@ -434,6 +437,7 @@ final class CameraViewModel: ObservableObject {
                                                   transportDrops: link.currentTransportDrops)
                 let stats = self.stream.stats
                 link.noteEncoderBitrate(stats.bitrate)
+                link.setPendingBudget(bitsPerSecond: stats.bitrate)
                 self.streamProfile = self.stream.currentProfile
             }
         }

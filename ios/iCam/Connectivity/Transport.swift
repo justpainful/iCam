@@ -49,7 +49,20 @@ final class Transport {
     /// Above this, new *media* frames are dropped rather than queued. Control
     /// frames are always sent: they are tiny, and losing them breaks the session
     /// far more visibly than losing a video frame.
-    private let maxPendingBytes = 1_500_000
+    ///
+    /// This number is denominated in bytes but *experienced in seconds*: on a
+    /// link delivering 800 kbit/s, a fixed 1.5 MB cap was fifteen to twenty
+    /// seconds of video queued ahead of live — all faithfully delivered by
+    /// TCP, all latency. The budget is therefore set by the encoder through
+    /// `setPendingBudget` as a fraction of a second at the *current* bitrate,
+    /// and this value is only the floor it can never go below.
+    private var maxPendingBytes = 300_000
+
+    /// Called by whoever knows the bitrate. Roughly a third of a second of
+    /// video at the given rate, never less than one keyframe's worth.
+    func setPendingBudget(bitsPerSecond: Int) {
+        maxPendingBytes = max(150_000, bitsPerSecond / 8 / 3)
+    }
 
     // MARK: - Lifecycle
 
@@ -101,17 +114,26 @@ final class Transport {
         })
     }
 
-    /// Sends bytes that are worth dropping: video and audio.
+    /// Whether a media frame of this size may be sent right now.
     ///
-    /// Returns `false` when the frame was dropped, which the caller reports as
-    /// a dropped frame rather than silently losing.
-    @discardableResult
-    func sendMedia(_ data: Data) -> Bool {
-        guard let connection else { return false }
-        guard pendingBytes + data.count <= maxPendingBytes else {
-            droppedFrames &+= 1
-            return false
-        }
+    /// **This must be asked before the frame is sealed.** The cipher's frame
+    /// counter is implicit and strict on both ends — sealing a frame and then
+    /// not sending it desynchronises the channel permanently, and every frame
+    /// after it fails authentication. The drop decision therefore lives here,
+    /// ahead of the seal, and `sendMedia` itself never refuses.
+    func canAcceptMedia(byteCount: Int) -> Bool {
+        connection != nil && pendingBytes + byteCount <= maxPendingBytes
+    }
+
+    /// Records a frame the caller chose not to seal. Bookkeeping only.
+    func noteSkippedMedia() {
+        droppedFrames &+= 1
+    }
+
+    /// Sends bytes that were cleared by `canAcceptMedia`. Unconditional: by the
+    /// time a frame reaches here it is sealed, and a sealed frame must go out.
+    func sendMedia(_ data: Data) {
+        guard let connection else { return }
         pendingBytes += data.count
         connection.send(content: data, completion: .contentProcessed { [weak self] error in
             guard let self else { return }
@@ -121,7 +143,6 @@ final class Transport {
                 self.update(.failed(Self.describe(error)))
             }
         })
-        return true
     }
 
     // MARK: - Internals

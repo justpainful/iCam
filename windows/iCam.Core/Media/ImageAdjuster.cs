@@ -68,6 +68,15 @@ public sealed class ImageAdjuster
     /// </summary>
     private const int BeautyKnee = 24;
 
+    /// <summary>
+    /// The chroma knee is tighter than the luma one. A blemish is mostly a
+    /// small *colour* deviation — a patch of red on skin-coloured skin — while
+    /// the colour edges that must survive (lips, eyes, hairline) are far
+    /// larger steps than any luma edge is. Sixteen flattens the blotch and
+    /// clears the lips by a wide margin.
+    /// </summary>
+    private const int BeautyChromaKnee = 16;
+
     private readonly VideoRange _range;
 
     private short[] _blur = [];
@@ -109,7 +118,7 @@ public sealed class ImageAdjuster
     }
 
     private sealed record Tables(ImageAdjustments Adjustments, byte[] Tone, byte[] Cb, byte[] Cr,
-                                 byte[] Beauty);
+                                 byte[] Beauty, byte[] BeautyChroma);
 
     /// <summary>
     /// Adjusts one frame where it lies.
@@ -156,6 +165,11 @@ public sealed class ImageAdjuster
         // on the texture that survived, instead of re-amplifying the texture
         // beauty just removed.
         if (adjustments.TouchesSkin) Smooth(luma, width, height, stride, tables.Beauty);
+        if (adjustments.TouchesSkin)
+        {
+            SmoothChroma(nv12[(stride * height)..], width, height / 2, stride,
+                         tables.BeautyChroma);
+        }
         if (adjustments.TouchesDetail) Sharpen(luma, width, height, stride, adjustments.Sharpness);
         if (adjustments.TouchesColour)
         {
@@ -230,13 +244,19 @@ public sealed class ImageAdjuster
         // Squaring keeps nearly full strength at pore amplitude and is close
         // to zero well before the knee.
         var beauty = new byte[256];
+        var beautyChroma = new byte[256];
         for (var i = 0; i < 256; i++)
         {
             var keep = 1 - Math.Min(1.0, (double)i * i / (BeautyKnee * BeautyKnee));
             beauty[i] = (byte)Math.Round(128 * adjustments.Beauty * keep * keep);
+
+            var keepChroma = 1 - Math.Min(1.0,
+                (double)i * i / (BeautyChromaKnee * BeautyChromaKnee));
+            beautyChroma[i] = (byte)Math.Round(
+                128 * adjustments.Beauty * keepChroma * keepChroma);
         }
 
-        return new Tables(adjustments, tone, cb, cr, beauty);
+        return new Tables(adjustments, tone, cb, cr, beauty, beautyChroma);
     }
 
     private static byte Quantise(double value) =>
@@ -317,6 +337,10 @@ public sealed class ImageAdjuster
         }
 
         Downscale(luma, width, height, stride, _base, smallWidth, smallHeight);
+        // Twice: two 1-2-1 passes reach roughly seven full-resolution pixels,
+        // which is pore scale on a face that fills a 1080p frame. One pass
+        // left larger blemishes half-treated.
+        BlurSmall(_base, smallWidth, smallHeight);
         BlurSmall(_base, smallWidth, smallHeight);
 
         for (var y = 0; y < height; y++)
@@ -379,6 +403,68 @@ public sealed class ImageAdjuster
     /// scale this reaches about five full-resolution pixels, which is the
     /// scale of the texture beauty exists to remove.
     /// </summary>
+    /// <summary>
+    /// The colour half of beauty: evens out blotches on the interleaved
+    /// CbCr plane. A blemish is mostly a small *colour* deviation — red on
+    /// skin-coloured skin — so flattening luma alone leaves the mark visible.
+    /// Same structure as the luma pass in miniature: each sample is measured
+    /// against a same-channel 3×3 blur, and the attenuation table pulls small
+    /// deviations toward it while colour edges — lips, eyes — index past the
+    /// knee and pass through untouched. Chroma is already quarter-resolution,
+    /// so a 3×3 here reaches as far as the luma pass does.
+    /// </summary>
+    private static void SmoothChroma(Span<byte> plane, int width, int rows, int stride,
+                                     byte[] attenuation)
+    {
+        if (rows < 2 || width < 6) return;
+
+        // Three rows of horizontally blurred chroma, same-channel taps two
+        // bytes apart because Cb and Cr interleave. Scaled ×4 like the luma
+        // ring so the vertical pass finishes with one shift.
+        Span<int> ring = new int[width * 3];
+
+        BlurChromaRow(plane[..width], ring[..width], width);
+
+        for (var y = 0; y < rows; y++)
+        {
+            if (y + 1 < rows)
+            {
+                BlurChromaRow(plane.Slice((y + 1) * stride, width),
+                              ring.Slice(((y + 1) % 3) * width, width), width);
+            }
+
+            var above = ring.Slice((y == 0 ? 0 : (y - 1) % 3) * width, width);
+            var here = ring.Slice((y % 3) * width, width);
+            var below = ring.Slice(((y + 1 < rows ? y + 1 : y) % 3) * width, width);
+
+            var row = plane.Slice(y * stride, width);
+            for (var x = 0; x < width; x++)
+            {
+                var baseValue = (above[x] + here[x] * 2 + below[x] + 8) >> 4;
+                var detail = row[x] - baseValue;
+                var magnitude = detail < 0 ? -detail : detail;
+                row[x] = (byte)(row[x] - ((detail * attenuation[magnitude] + 64) >> 7));
+            }
+        }
+    }
+
+    /// <summary>1-2-1 across same-channel neighbours of an interleaved row, ×4 scale.</summary>
+    private static void BlurChromaRow(ReadOnlySpan<byte> row, Span<int> destination, int width)
+    {
+        for (var x = 0; x < 2; x++)
+        {
+            destination[x] = row[x] * 3 + row[x + 2];
+        }
+        for (var x = 2; x < width - 2; x++)
+        {
+            destination[x] = row[x - 2] + row[x] * 2 + row[x + 2];
+        }
+        for (var x = Math.Max(2, width - 2); x < width; x++)
+        {
+            destination[x] = row[x - 2] + row[x] * 3;
+        }
+    }
+
     private static void BlurSmall(byte[] plane, int width, int height)
     {
         // The same three-row ring as Sharpen: each row's horizontal pass lands

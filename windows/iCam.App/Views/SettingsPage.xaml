@@ -46,6 +46,7 @@
                             <ComboBoxItem Content="720p 30" Tag="720p30" />
                             <ComboBoxItem Content="1080p 30" Tag="1080p30" />
                             <ComboBoxItem Content="1080p 60" Tag="1080p60" />
+                            <ComboBoxItem Content="4K 30" Tag="2160p30" />
                         </ComboBox>
                     </Grid>
 

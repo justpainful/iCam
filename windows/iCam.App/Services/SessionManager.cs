@@ -158,6 +158,9 @@ public sealed partial class ConnectedDevice : System.ComponentModel.INotifyPrope
         // Before the request goes out, not after: the phone can have frames on
         // the wire before this await returns.
         _videoFormat = profile;
+        _targetBitrate = profile.Bitrate;
+        _governedBitrate = 0;
+        _governor.Reset();
         await Session.StartStreamAsync(profile);
         Post(() =>
         {
@@ -209,6 +212,10 @@ public sealed partial class ConnectedDevice : System.ComponentModel.INotifyPrope
                 // so writing it here puts the new geometry in place before the
                 // first frame that uses it can possibly be handled.
                 _videoFormat = status.Actual;
+                // The phone's word on the bitrate in force — its own adaptive
+                // control moves it too, and the governor must reason from
+                // what is true rather than what it last asked for.
+                if (status.Active) _governedBitrate = status.Actual.Bitrate;
                 Post(() =>
                 {
                     StreamProfile = status.Actual;
@@ -249,8 +256,34 @@ public sealed partial class ConnectedDevice : System.ComponentModel.INotifyPrope
         }
     }
 
+    /// <summary>
+    /// Receiver-side congestion control. The phone adapts from what it can
+    /// see; this side holds the measurement that cannot lie — how fast frames
+    /// actually arrive — and asks for a lower bitrate when the link falls
+    /// behind. It works against any phone that honours stream.config, which
+    /// is all of them.
+    /// </summary>
+    private readonly StreamGovernor _governor = new();
+    private int _governedBitrate;
+    private int _targetBitrate;
+
     private void OnVideo(VideoFrameHeader header, ReadOnlyMemory<byte> body)
     {
+        if (!header.IsParameterSets && _targetBitrate > 0)
+        {
+            _governor.OnFrame(header.PtsUs, Environment.TickCount64);
+            var current = _governedBitrate > 0 ? _governedBitrate : _targetBitrate;
+            if (_governor.Evaluate(current, _targetBitrate) is { } bitrate
+                && bitrate != current)
+            {
+                _governedBitrate = bitrate;
+                Log.Net.Info($"The link carries less than the stream; asking for " +
+                             $"{bitrate / 1000} kbit/s (was {current / 1000})");
+                _ = Session.SendControlAsync(ControlType.StreamConfig,
+                    new StreamStartPayload { Profile = _videoFormat with { Bitrate = bitrate } });
+            }
+        }
+
         if (header.IsParameterSets)
         {
             // The field, never the property: the property is a step behind

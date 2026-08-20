@@ -563,12 +563,51 @@ public class ImageAdjustmentTests
     }
 
     [Fact]
-    public void BeautyNeverTouchesColour()
+    public void BeautyOnFlatColourIsTheIdentity()
     {
         var frame = Frame(120, 90, 170, SkinWidth, SkinHeight);
         With(new ImageAdjustments { Beauty = 1 }).Apply(frame, SkinWidth, SkinHeight);
         Assert.Equal(90, frame[SkinWidth * SkinHeight]);
         Assert.Equal(170, frame[SkinWidth * SkinHeight + 1]);
+    }
+
+    [Fact]
+    public void BeautyEvensOutABlotchOfColour()
+    {
+        // Skin-coloured chroma with one redder blotch: a blemish, as the
+        // chroma plane sees it. Cr sits at 140, the blotch pushes it to 150.
+        var frame = Frame(120, 110, 140, SkinWidth, SkinHeight);
+        var chroma = SkinWidth * SkinHeight;
+        var blotchAt = chroma + 6 * SkinWidth + 21; // a Cr sample mid-plane
+        frame[blotchAt] = 150;
+
+        With(new ImageAdjustments { Beauty = 1 }).Apply(frame, SkinWidth, SkinHeight);
+
+        Assert.True(frame[blotchAt] < 148,
+            $"a 10-step colour blotch should fade, still at {frame[blotchAt]}");
+    }
+
+    [Fact]
+    public void BeautyLeavesLipsTheirColour()
+    {
+        // A hard colour boundary: skin chroma on the left, lip-red on the
+        // right — a 40-step Cr edge, far past the chroma knee.
+        var frame = Frame(120, 110, 130, SkinWidth, SkinHeight);
+        var chroma = SkinWidth * SkinHeight;
+        for (var y = 0; y < SkinHeight / 2; y++)
+        {
+            for (var x = SkinWidth / 2 + 1; x < SkinWidth; x += 2)
+            {
+                frame[chroma + y * SkinWidth + x] = 170;
+            }
+        }
+
+        With(new ImageAdjustments { Beauty = 1 }).Apply(frame, SkinWidth, SkinHeight);
+
+        var nearEdgeSkin = frame[chroma + 6 * SkinWidth + (SkinWidth / 2 - 5)];
+        var nearEdgeLip = frame[chroma + 6 * SkinWidth + (SkinWidth / 2 + 5)];
+        Assert.True(Math.Abs(nearEdgeSkin - 130) <= 3, $"skin side moved to {nearEdgeSkin}");
+        Assert.True(Math.Abs(nearEdgeLip - 170) <= 3, $"lip side moved to {nearEdgeLip}");
     }
 
     private static double Deviation(byte[] frame)

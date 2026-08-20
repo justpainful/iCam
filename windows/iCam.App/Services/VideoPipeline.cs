@@ -78,6 +78,7 @@ public sealed class VideoPipeline : IDisposable
     public event Action? KeyframeNeeded;
 
     private long _lastKeyframeAskTicks;
+    private uint _lastSequence;
 
     /// <summary>
     /// Called for a frame carrying codec configuration. Until this arrives
@@ -128,6 +129,21 @@ public sealed class VideoPipeline : IDisposable
             // Before the first keyframe there is nothing a decoder can start
             // from, and feeding it inter frames only produces a smear.
             if (_configuration is null || (_awaitingKeyframe && !header.IsKeyframe)) return;
+
+            // A jump in the sequence means the phone dropped frames on its
+            // side — deliberately, when its link filled. The frames in hand
+            // reference frames that never crossed the wire, so they are smear
+            // in waiting; hold the picture until the keyframe the phone is
+            // already sending.
+            if (!header.IsKeyframe && _lastSequence != 0
+                && header.Sequence != _lastSequence + 1)
+            {
+                _awaitingKeyframe = true;
+                _lastSequence = header.Sequence;
+                return;
+            }
+            _lastSequence = header.Sequence;
+
             configuration = _configuration;
             if (header.IsKeyframe) _awaitingKeyframe = false;
         }

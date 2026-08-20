@@ -84,9 +84,17 @@ struct VideoFormat {
     UINT32 fps;
 };
 
+// Every size iCam Camera offers. Applications pick from this list, so an
+// entry here is a promise the pipeline has to keep — 4K NV12 at 30 is
+// 373 MB/s down the pipe, which a local named pipe carries comfortably.
+// Order matters twice: index 0 is what the Frame Server treats as the
+// preferred format in most enumerations, and kDefaultFormatIndex is what a
+// stream starts with before anything negotiates.
 inline constexpr VideoFormat kFormats[] = {
-    {1280, 720, 30},
     {1920, 1080, 30},
+    {1280, 720, 30},
+    {1920, 1080, 60},
+    {3840, 2160, 30},
 };
 
 inline constexpr UINT32 kDefaultFormatIndex = 0;
