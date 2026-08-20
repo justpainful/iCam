@@ -38,9 +38,14 @@ jobs:
         with:
           dotnet-version: "9.0.x"
 
+      # Restored per project rather than through the solution: the solution
+      # also carries the WinUI application, which is built by its own job on a
+      # runner set up for it.
       - name: Restore
         working-directory: windows
-        run: dotnet restore iCam.Core/iCam.Core.csproj iCam.Core.Tests/iCam.Core.Tests.csproj ../tools/ProtocolVectors/ProtocolVectors.csproj
+        run: |
+          dotnet restore iCam.Core.Tests/iCam.Core.Tests.csproj
+          dotnet restore ../tools/ProtocolVectors/ProtocolVectors.csproj
 
       - name: Build
         working-directory: windows
