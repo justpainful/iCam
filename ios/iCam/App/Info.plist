@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>iCam</string>
+	<key>CFBundleName</key>
+	<string>iCam</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string></string>
+	</dict>
+
+	<!-- Permissions. Each string says what iCam does with the access and
+	     nothing else; they are requested at the moment they are needed, never
+	     all at once on first launch. -->
+	<key>NSCameraUsageDescription</key>
+	<string>iCam uses the camera to show your preview, record video, and send a picture to your PC.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>iCam uses the microphone to record sound with your video and to send audio to your PC.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>iCam can add the photos and videos you capture to your library.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>iCam uses your local network to find and connect to your computer. Nothing is sent over the internet.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_icam._tcp</string>
+	</array>
+
+	<!-- Streaming and recording continue while the screen is off. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+		<string>video-camera</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleLightContent</string>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+</dict>
+</plist>

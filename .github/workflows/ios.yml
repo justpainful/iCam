@@ -1,0 +1,166 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - "assets/**"
+      - "tools/generate-icons.py"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: macos-15
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          ls /Applications | grep -i "^Xcode" || true
+          # Take the newest Xcode the runner has. iCam builds against whatever
+          # SDK is present: the Liquid Glass code is behind a compiler guard, so
+          # an older Xcode simply compiles the material fallback instead.
+          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $latest"
+          sudo xcode-select -s "$latest/Contents/Developer"
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the project
+        working-directory: ios
+        run: |
+          xcodegen generate
+          xcodebuild -list -project iCam.xcodeproj
+
+      - name: Pick a simulator
+        id: simulator
+        run: |
+          # Take any available iPhone runtime rather than pinning a model that
+          # a future runner image may not ship.
+          device=$(xcrun simctl list devices available --json \
+            | python3 -c "
+import json,sys
+data = json.load(sys.stdin)['devices']
+best = None
+for runtime, devices in data.items():
+    if 'iOS' not in runtime:
+        continue
+    for device in devices:
+        if device['isAvailable'] and 'iPhone' in device['name']:
+            best = device['name']
+            break
+    if best:
+        break
+print(best or 'iPhone 16')
+")
+          echo "Simulator: $device"
+          echo "name=$device" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project iCam.xcodeproj \
+            -scheme iCam \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=${{ steps.simulator.outputs.name }}" \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions || \
+          xcodebuild build \
+            -project iCam.xcodeproj \
+            -scheme iCam \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=${{ steps.simulator.outputs.name }}" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Test
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project iCam.xcodeproj \
+            -scheme iCam \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=${{ steps.simulator.outputs.name }}" \
+            CODE_SIGNING_ALLOWED=NO \
+            -resultBundlePath TestResults.xcresult
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-results
+          path: ios/TestResults.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
+
+  archive:
+    name: Unsigned archive
+    runs-on: macos-15
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          sudo xcode-select -s "$latest/Contents/Developer"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Archive for device
+        working-directory: ios
+        run: |
+          # An unsigned device archive proves the app builds for real hardware,
+          # which the simulator build does not: the simulator has different
+          # availability for parts of AVFoundation and VideoToolbox.
+          xcodebuild archive \
+            -project iCam.xcodeproj \
+            -scheme iCam \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath build/iCam.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS=""
+
+      - name: Package the unsigned app
+        working-directory: ios
+        run: |
+          mkdir -p build/Payload
+          cp -R build/iCam.xcarchive/Products/Applications/iCam.app build/Payload/
+          cd build && zip -qry iCam-unsigned.ipa Payload
+
+      - name: Upload the build
+        uses: actions/upload-artifact@v4
+        with:
+          name: iCam-ios-unsigned
+          path: ios/build/iCam-unsigned.ipa
+          retention-days: 14

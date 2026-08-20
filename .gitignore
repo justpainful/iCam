@@ -1,0 +1,24 @@
+# macOS / Xcode
+.DS_Store
+ios/*.xcodeproj
+ios/*.xcworkspace
+ios/build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Windows / .NET
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user
+*.suo
+windows/**/Generated Files/
+windows/**/AppPackages/
+windows/**/BundleArtifacts/
+packages/
+
+# Tooling
+node_modules/
+*.log
+.idea/
