@@ -97,6 +97,11 @@ public sealed partial class CameraPage : Page
         };
         Preview.SetMediaPlayer(_player);
 
+        // The same player feeds iCam Camera. One decode serves the window and
+        // the virtual camera both; decoding twice would double the cost of the
+        // only genuinely expensive step in the pipeline.
+        Services.VirtualCamera.SetSource(_player);
+
         EmptyState.Visibility = Visibility.Collapsed;
         Inspector.IsEnabled = true;
         PhotoButton.IsEnabled = true;
@@ -119,6 +124,11 @@ public sealed partial class CameraPage : Page
             _device.Video.SourceChanged -= OnVideoSourceChanged;
         }
         _device = null;
+
+        // Detached before the player is torn down, so the camera falls back to
+        // its own card rather than reading a disposed surface. Losing the
+        // iPhone must not remove iCam Camera from a call in progress.
+        Services.VirtualCamera.SetSource(null);
 
         Preview.SetMediaPlayer(null);
         if (_player is not null)
