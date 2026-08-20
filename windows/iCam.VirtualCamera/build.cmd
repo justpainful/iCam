@@ -39,12 +39,12 @@ if /i "%CONFIG%"=="Debug" (
 )
 
 cl %CFLAGS% /I"%HERE%." ^
-   "%HERE%dllmain.cpp" "%HERE%MediaSource.cpp" "%HERE%SourceActivate.cpp" "%HERE%MediaStream.cpp" "%HERE%FrameSource.cpp" "%HERE%Diagnostics.cpp" ^
+   "%HERE%dllmain.cpp" "%HERE%MediaSource.cpp" "%HERE%SourceActivate.cpp" "%HERE%MediaStream.cpp" "%HERE%FrameSource.cpp" "%HERE%HoldingPattern.cpp" "%HERE%Diagnostics.cpp" ^
    /Fo"%OUTDIR%\\" /Fd"%OUTDIR%\iCam.VirtualCamera.pdb" ^
    /link /DLL /DEF:"%HERE%iCam.VirtualCamera.def" ^
    /OUT:"%OUTDIR%\iCam.VirtualCamera.dll" ^
    /IMPLIB:"%OUTDIR%\iCam.VirtualCamera.lib" ^
-   mf.lib mfplat.lib mfuuid.lib mfsensorgroup.lib ole32.lib oleaut32.lib advapi32.lib
+   mf.lib mfplat.lib mfuuid.lib mfsensorgroup.lib ole32.lib oleaut32.lib advapi32.lib gdi32.lib user32.lib
 
 if errorlevel 1 exit /b 1
 echo.

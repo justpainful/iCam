@@ -1,6 +1,6 @@
 #pragma once
 
-#include "pch.h"
+#include "HoldingPattern.h"
 
 namespace icam {
 
@@ -39,7 +39,8 @@ private:
     void ReaderLoop();
     bool ConnectOnce();
     bool ReadExactly(void* buffer, DWORD bytes);
-    void DrawHoldingPattern(BYTE* destination, UINT32 stride);
+    void Disconnect();
+    HoldingPattern::State CurrentState() const;
 
     UINT32 width_ = kFormats[kDefaultFormatIndex].width;
     UINT32 height_ = kFormats[kDefaultFormatIndex].height;
@@ -60,6 +61,12 @@ private:
 
     std::vector<BYTE> readBuffer_;
     UINT64 frameCounter_ = 0;
+
+    HoldingPattern holding_;
+    // When the last real frame arrived. A stream that stops is a different
+    // situation from one that never started, and the card says which.
+    std::atomic<UINT64> lastFrameUs_{0};
+    std::atomic<bool> everReceived_{false};
 };
 
 }  // namespace icam
