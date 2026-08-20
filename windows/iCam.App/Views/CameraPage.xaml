@@ -143,6 +143,17 @@
                                   SelectionChanged="OnFrameRateChanged" />
                     </StackPanel>
 
+                    <StackPanel Spacing="6">
+                        <Grid>
+                            <TextBlock Text="Zoom" Style="{StaticResource CaptionTextBlockStyle}" />
+                            <TextBlock x:Name="ZoomReadout" Text="1.0×"
+                                       HorizontalAlignment="Right"
+                                       Style="{StaticResource ICamReadoutTextStyle}" />
+                        </Grid>
+                        <Slider x:Name="ZoomSlider" Minimum="1" Maximum="6"
+                                StepFrequency="0.1" ValueChanged="OnZoomChanged" />
+                    </StackPanel>
+
                     <TextBlock Text="EXPOSURE" Style="{StaticResource ICamSectionHeaderStyle}" />
 
                     <StackPanel Spacing="6">
@@ -323,6 +334,12 @@
 
                     <ToggleSwitch x:Name="TorchToggle" Header="Torch"
                                   Toggled="OnTorchToggled" />
+
+                    <!-- Mirroring changes the *stream*, on the phone. The
+                         preview shows exactly what the call receives, so it
+                         flips too — one picture, not two opinions of it. -->
+                    <ToggleSwitch x:Name="MirrorToggle" Header="Mirror"
+                                  Toggled="OnMirrorToggled" />
 
                     <!-- Temperature is a state, never a number. iOS publishes no
                          sensor for one, so iCam does not invent a reading. -->

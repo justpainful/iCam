@@ -351,6 +351,16 @@ public sealed partial class CameraPage : Page
             }
             SelectByTag(LensPicker, state.LensId);
 
+            // The zoom range is the lens's, not a guess: an ultra-wide starts
+            // below 1 and a telephoto ends far above 6, and the slider should
+            // only offer what the glass can do.
+            var currentLens = capabilities.Lenses.FirstOrDefault(l => l.Id == state.LensId);
+            if (currentLens is not null && currentLens.MaxZoom > currentLens.MinZoom)
+            {
+                ZoomSlider.Minimum = Math.Max(currentLens.MinZoom, 0.5);
+                ZoomSlider.Maximum = Math.Min(currentLens.MaxZoom, 15);
+            }
+
             ResolutionPicker.Items.Clear();
             foreach (var (width, height) in capabilities.ResolutionsFor(state.LensId))
             {
@@ -446,6 +456,10 @@ public sealed partial class CameraPage : Page
             TemperatureReadout.Text = $"{state.Temperature:0} K";
 
             TorchToggle.IsOn = state.Torch != TorchMode.Off;
+            MirrorToggle.IsOn = state.Mirrored;
+
+            ZoomSlider.Value = Math.Clamp(state.Zoom, ZoomSlider.Minimum, ZoomSlider.Maximum);
+            ZoomReadout.Text = $"{state.Zoom:0.0}×";
 
             BrightnessSlider.Value = state.Brightness;
             ContrastSlider.Value = state.Contrast;
@@ -618,6 +632,15 @@ public sealed partial class CameraPage : Page
 
     private void OnTorchToggled(object sender, RoutedEventArgs e) =>
         Send(m => m.Torch = TorchToggle.IsOn ? TorchMode.On : TorchMode.Off);
+
+    private void OnMirrorToggled(object sender, RoutedEventArgs e) =>
+        Send(m => m.Mirrored = MirrorToggle.IsOn);
+
+    private void OnZoomChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        ZoomReadout.Text = $"{e.NewValue:0.0}×";
+        Send(m => m.Zoom = Math.Round(e.NewValue, 1));
+    }
 
     private void OnBrightnessChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
