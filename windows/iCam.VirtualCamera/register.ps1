@@ -59,10 +59,16 @@ if ($Remove) {
 }
 
 if (-not $DllPath) {
-    $DllPath = Join-Path $PSScriptRoot 'build\Release\iCam.VirtualCamera.dll'
+    # Beside the script when shipped with iCam, under build/ when run from a
+    # source tree. Looking in both means one script serves either.
+    $candidates = @(
+        (Join-Path $PSScriptRoot 'iCam.VirtualCamera.dll'),
+        (Join-Path $PSScriptRoot 'build\Release\iCam.VirtualCamera.dll')
+    )
+    $DllPath = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
-if (-not (Test-Path $DllPath)) {
-    throw "Could not find $DllPath. Build it first with build.cmd."
+if (-not $DllPath -or -not (Test-Path $DllPath)) {
+    throw 'Could not find iCam.VirtualCamera.dll. Build it first with build.cmd.'
 }
 
 New-Item -ItemType Directory -Path $installRoot -Force | Out-Null

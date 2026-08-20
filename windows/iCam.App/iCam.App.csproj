@@ -47,4 +47,17 @@
     <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- iCam Camera ships beside the application. The setup step in Settings
+       runs this script, and the script installs the DLL somewhere the Frame
+       Server can read it — a user profile is not such a place. -->
+  <ItemGroup>
+    <Content Include="..\iCam.VirtualCamera\register.ps1"
+             Link="VirtualCamera\register.ps1"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\iCam.VirtualCamera\build\Release\iCam.VirtualCamera.dll"
+             Link="VirtualCamera\iCam.VirtualCamera.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             Condition="Exists('..\iCam.VirtualCamera\build\Release\iCam.VirtualCamera.dll')" />
+  </ItemGroup>
+
 </Project>
