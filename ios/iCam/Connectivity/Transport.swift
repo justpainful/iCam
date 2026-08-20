@@ -91,6 +91,13 @@ final class Transport {
         connect(to: NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: nwPort))
     }
 
+    /// Takes over a connection that arrived at this device — the USB tunnel.
+    /// From here on it is indistinguishable from one this side dialled.
+    func adopt(_ newConnection: NWConnection) {
+        cancel()
+        start(newConnection)
+    }
+
     func cancel() {
         connection?.cancel()
         connection = nil

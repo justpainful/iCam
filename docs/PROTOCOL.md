@@ -43,6 +43,13 @@ to have a stable address and a firewall profile the user controls.
 Default TCP port: **48213**. If busy, the listener takes the next free port and
 publishes the real port in the Bonjour record.
 
+Over USB the *transport* direction inverts — Apple's device service only
+tunnels into the phone, so the PC dials — but the protocol roles do not: the
+phone accepts the tunnel and still sends the first handshake message. Who
+dialled and who says hello are independent, and keeping one role keeps one
+code path for trust. The phone listens on fixed port **48214**, because there
+is no discovery inside the tunnel to publish a dynamic one.
+
 TXT record keys:
 
 ```

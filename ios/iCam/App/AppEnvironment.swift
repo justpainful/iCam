@@ -20,6 +20,8 @@ final class AppEnvironment: ObservableObject {
 
     let link: PeerLink
     let camera: CameraViewModel
+    /// Answers the PC when it dials through the cable.
+    private let usbListener = UsbTunnelListener()
 
     /// Recordings that were interrupted, found at launch. Offered to the user
     /// once; never deleted on their behalf.
@@ -58,6 +60,14 @@ final class AppEnvironment: ObservableObject {
         }
 
         observeAutoConnect()
+
+        // Direct USB: always listening. A cable arriving IS the user intent,
+        // so there is no switch to find first — plug in, and the PC's tunnel
+        // lands here and becomes an ordinary session.
+        usbListener.onConnection = { [weak self] connection in
+            self?.link.adoptIncoming(connection)
+        }
+        usbListener.start()
     }
 
     // MARK: - Scene

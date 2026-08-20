@@ -225,8 +225,23 @@ final class PeerLink: ObservableObject {
 
     // MARK: - Connection lifecycle
 
+    /// A connection that arrived *at* the phone — the USB tunnel, where the PC
+    /// dials through Apple's cable service. The phone still plays the protocol
+    /// initiator: who dialled and who says hello first are independent, and
+    /// keeping one role keeps one code path for handshake and trust.
+    func adoptIncoming(_ connection: NWConnection) {
+        lastEndpoint = nil        // reconnection is the PC's job over USB
+        wantsConnection = true
+        reconnectAttempt = 0
+        activateTransport { $0.adopt(connection) }
+    }
+
     private func openConnection() {
         guard let endpoint = lastEndpoint else { return }
+        activateTransport { $0.connect(to: endpoint) }
+    }
+
+    private func activateTransport(_ begin: (Transport) -> Void) {
         teardown()
         status = .connecting
 
@@ -241,7 +256,7 @@ final class PeerLink: ObservableObject {
         newTransport.onBytes = { [weak self] data in
             Task { @MainActor in self?.handle(bytes: data) }
         }
-        newTransport.connect(to: endpoint)
+        begin(newTransport)
     }
 
     private func handle(transportState state: Transport.State) {

@@ -27,6 +27,8 @@ public sealed class AppServices : IAsyncDisposable
     public AudioRenderer Audio { get; } = new();
 
     public VirtualCameraService VirtualCamera { get; }
+    /// <summary>Direct USB: sessions over the cable, through Apple's device service.</summary>
+    public UsbLinkService Usb { get; }
     public AppSettings Settings { get; } = new();
 
     public string ComputerName => Environment.MachineName;
@@ -42,6 +44,11 @@ public sealed class AppServices : IAsyncDisposable
         Listener.SessionAccepted += Sessions.Add;
         Listener.Failed += reason => Log.Net.Warn(reason);
 
+        // The cable is just another way in. Sessions arriving over USB join
+        // the same manager, the same trust, the same everything.
+        Usb = new UsbLinkService(Identity, Trust, ComputerName);
+        Usb.SessionAccepted += Sessions.Add;
+
         // The phone's microphone follows the phone: whichever device is
         // connected feeds the audio path, and a phone that leaves takes its
         // audio with it.
@@ -55,12 +62,14 @@ public sealed class AppServices : IAsyncDisposable
         // Other apps should be able to select iCam Camera and see it explain
         // itself, rather than find nothing in the list until a phone connects.
         VirtualCamera.Start();
+        Usb.Start();
         return Listener.StartAsync();
     }
 
     public async ValueTask DisposeAsync()
     {
         await Listener.DisposeAsync();
+        await Usb.DisposeAsync();
         await VirtualCamera.DisposeAsync();
         await Audio.DisposeAsync();
         Frames.Dispose();
