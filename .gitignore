@@ -22,3 +22,7 @@ packages/
 node_modules/
 *.log
 .idea/
+
+# WinUI intermediate
+windows/**/Generated Files/
+windows/publish/

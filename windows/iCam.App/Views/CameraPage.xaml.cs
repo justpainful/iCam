@@ -1,0 +1,534 @@
+using System.ComponentModel;
+using ICam.App.Services;
+using ICam.Core.Protocol;
+using ICam.Core.Transport;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
+using Windows.Media.Core;
+using Windows.Media.Playback;
+
+namespace ICam.App.Views;
+
+/// <summary>
+/// The preview, the two actions that matter, and one inspector.
+///
+/// Every control here writes through a <see cref="CameraMutation"/> and then
+/// waits for the phone to broadcast the state it actually reached. Nothing on
+/// this page believes its own value: if the phone clamps an ISO, the slider
+/// snaps to what the sensor accepted rather than showing a number that never
+/// happened.
+/// </summary>
+public sealed partial class CameraPage : Page
+{
+    private AppServices Services => App.Instance.Services;
+    private ConnectedDevice? _device;
+    private MediaPlayer? _player;
+
+    /// <summary>
+    /// Set while the page is writing values into its own controls, so their
+    /// change handlers do not send the state straight back to the phone.
+    /// </summary>
+    private bool _updatingFromState;
+
+    private readonly DispatcherTimer _recordingTimer = new()
+    {
+        Interval = TimeSpan.FromSeconds(1),
+    };
+
+    public CameraPage()
+    {
+        InitializeComponent();
+        _recordingTimer.Tick += (_, _) => UpdateRecordingReadout();
+    }
+
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+
+        Services.Sessions.DeviceAdded += OnDeviceAdded;
+        Services.Sessions.DeviceRemoved += OnDeviceRemoved;
+        Attach(Services.Sessions.Primary);
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+
+        Services.Sessions.DeviceAdded -= OnDeviceAdded;
+        Services.Sessions.DeviceRemoved -= OnDeviceRemoved;
+        Detach();
+        _recordingTimer.Stop();
+    }
+
+    // MARK: - Device
+
+    private void OnDeviceAdded(ConnectedDevice device)
+    {
+        if (_device is null) Attach(device);
+    }
+
+    private void OnDeviceRemoved(ConnectedDevice device)
+    {
+        if (_device == device) Detach();
+    }
+
+    private void Attach(ConnectedDevice? device)
+    {
+        Detach();
+        _device = device;
+        if (device is null)
+        {
+            ApplyEmptyState();
+            return;
+        }
+
+        device.PropertyChanged += OnDevicePropertyChanged;
+        device.Video.SourceChanged += OnVideoSourceChanged;
+
+        _player = new MediaPlayer
+        {
+            // A live camera, not a file: never buffer ahead, never loop, and
+            // never wait to build a cushion the viewer would experience as lag.
+            RealTimePlayback = true,
+            AutoPlay = true,
+            IsLoopingEnabled = false,
+        };
+        Preview.SetMediaPlayer(_player);
+
+        EmptyState.Visibility = Visibility.Collapsed;
+        Inspector.IsEnabled = true;
+        PhotoButton.IsEnabled = true;
+        RecordButton.IsEnabled = true;
+        StreamToggle.IsEnabled = VirtualCameraService.IsSupportedByThisWindows;
+
+        RefreshAll();
+
+        if (Services.Settings.StartStreamingOnConnect)
+        {
+            _ = device.StartStreamingAsync(ProfileFromSettings());
+        }
+    }
+
+    private void Detach()
+    {
+        if (_device is not null)
+        {
+            _device.PropertyChanged -= OnDevicePropertyChanged;
+            _device.Video.SourceChanged -= OnVideoSourceChanged;
+        }
+        _device = null;
+
+        Preview.SetMediaPlayer(null);
+        _player?.Dispose();
+        _player = null;
+    }
+
+    private void ApplyEmptyState()
+    {
+        EmptyState.Visibility = Visibility.Visible;
+        DeviceName.Text = "No iPhone connected";
+        DeviceBadge.Visibility = Visibility.Collapsed;
+        Inspector.IsEnabled = false;
+        PhotoButton.IsEnabled = false;
+        RecordButton.IsEnabled = false;
+        StreamToggle.IsEnabled = false;
+        RecordingChip.Visibility = Visibility.Collapsed;
+    }
+
+    private void OnVideoSourceChanged(MediaStreamSource source)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_player is null) return;
+            _player.Source = MediaSource.CreateFromMediaStreamSource(source);
+            _player.Play();
+        });
+    }
+
+    private void OnDevicePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            switch (e.PropertyName)
+            {
+                case nameof(ConnectedDevice.State):
+                    ApplyState();
+                    break;
+                case nameof(ConnectedDevice.Capabilities):
+                    ApplyCapabilities();
+                    break;
+                case nameof(ConnectedDevice.Telemetry):
+                    ApplyTelemetry();
+                    break;
+                case nameof(ConnectedDevice.Name):
+                case nameof(ConnectedDevice.StreamProfile):
+                case nameof(ConnectedDevice.IsStreaming):
+                    ApplyHeader();
+                    break;
+            }
+        });
+    }
+
+    private void RefreshAll()
+    {
+        ApplyCapabilities();
+        ApplyState();
+        ApplyTelemetry();
+        ApplyHeader();
+    }
+
+    // MARK: - Rendering state
+
+    private void ApplyHeader()
+    {
+        if (_device is null) return;
+
+        DeviceName.Text = _device.Name;
+        var state = _device.State;
+        DeviceSummary.Text = $"{Describe(state.Width, state.Height)} · {state.Fps} · "
+                           + (state.Codec == VideoCodec.Hevc ? "HEVC" : "H.264");
+        DeviceBadge.Visibility = Visibility.Visible;
+        StreamToggle.IsChecked = _device.IsStreaming;
+    }
+
+    private void ApplyCapabilities()
+    {
+        if (_device is null) return;
+        var capabilities = _device.Capabilities;
+        var state = _device.State;
+
+        _updatingFromState = true;
+        try
+        {
+            LensPicker.Items.Clear();
+            foreach (var lens in capabilities.Lenses)
+            {
+                LensPicker.Items.Add(new ComboBoxItem
+                {
+                    Content = $"{lens.Label}×  {Describe(lens.Position)}",
+                    Tag = lens.Id,
+                });
+            }
+            SelectByTag(LensPicker, state.LensId);
+
+            ResolutionPicker.Items.Clear();
+            foreach (var (width, height) in capabilities.ResolutionsFor(state.LensId))
+            {
+                ResolutionPicker.Items.Add(new ComboBoxItem
+                {
+                    Content = Describe(width, height),
+                    Tag = $"{width}x{height}",
+                });
+            }
+            SelectByTag(ResolutionPicker, $"{state.Width}x{state.Height}");
+
+            FrameRatePicker.Items.Clear();
+            foreach (var rate in capabilities.FrameRatesFor(state.LensId, state.Width, state.Height))
+            {
+                FrameRatePicker.Items.Add(new ComboBoxItem
+                {
+                    Content = $"{rate} fps",
+                    Tag = rate.ToString(),
+                });
+            }
+            SelectByTag(FrameRatePicker, state.Fps.ToString());
+
+            // Ranges come from the live device, so the slider cannot reach a
+            // value this sensor does not have.
+            var format = capabilities.FormatsFor(state.LensId)
+                .FirstOrDefault(f => f.Width == state.Width && f.Height == state.Height);
+            if (format is { IsoRange.Count: 2 } && format.IsoRange[1] > format.IsoRange[0])
+            {
+                IsoSlider.Minimum = format.IsoRange[0];
+                IsoSlider.Maximum = format.IsoRange[1];
+            }
+            if (format is { ExposureDurationUsRange.Count: 2 }
+                && format.ExposureDurationUsRange[1] > format.ExposureDurationUsRange[0])
+            {
+                ShutterSlider.Minimum = format.ExposureDurationUsRange[0];
+                // A quarter second is the slowest shutter worth offering for
+                // handheld video; beyond it the slider is only harder to aim.
+                ShutterSlider.Maximum = Math.Min(format.ExposureDurationUsRange[1], 250_000);
+            }
+
+            TorchToggle.IsEnabled = capabilities.Torch.Supported;
+            ManualWhiteBalancePanel.Visibility = capabilities.WhiteBalance.Supported
+                ? Visibility.Visible : Visibility.Collapsed;
+        }
+        finally
+        {
+            _updatingFromState = false;
+        }
+    }
+
+    private void ApplyState()
+    {
+        if (_device is null) return;
+        var state = _device.State;
+
+        _updatingFromState = true;
+        try
+        {
+            SelectByTag(LensPicker, state.LensId);
+            SelectByTag(ResolutionPicker, $"{state.Width}x{state.Height}");
+            SelectByTag(FrameRatePicker, state.Fps.ToString());
+            SelectByTag(ExposureModePicker, state.ExposureMode == ExposureMode.Manual
+                ? "manual" : "auto");
+            SelectByTag(WhiteBalanceModePicker, state.WhiteBalanceMode == WhiteBalanceMode.Manual
+                ? "manual" : "auto");
+            SelectByTag(FocusModePicker, state.FocusMode switch
+            {
+                FocusMode.Manual => "manual",
+                FocusMode.Single => "single",
+                _ => "continuous",
+            });
+
+            var manualExposure = state.ExposureMode == ExposureMode.Manual;
+            ManualExposurePanel.Visibility = manualExposure
+                ? Visibility.Visible : Visibility.Collapsed;
+            AutoExposurePanel.Visibility = manualExposure
+                ? Visibility.Collapsed : Visibility.Visible;
+
+            EvSlider.Value = state.Ev;
+            EvReadout.Text = $"{state.Ev:+0.0;-0.0;0.0} EV";
+
+            IsoSlider.Value = Math.Clamp(state.Iso, IsoSlider.Minimum, IsoSlider.Maximum);
+            IsoReadout.Text = $"{state.Iso:0}";
+
+            ShutterSlider.Value = Math.Clamp(state.ExposureDurationUs,
+                                             ShutterSlider.Minimum, ShutterSlider.Maximum);
+            ShutterReadout.Text = $"1/{state.ShutterDenominator}";
+
+            ManualWhiteBalancePanel.Visibility =
+                state.WhiteBalanceMode == WhiteBalanceMode.Manual
+                    ? Visibility.Visible : Visibility.Collapsed;
+            TemperatureSlider.Value = Math.Clamp(state.Temperature, 2000, 10000);
+            TemperatureReadout.Text = $"{state.Temperature:0} K";
+
+            TorchToggle.IsOn = state.Torch != TorchMode.Off;
+        }
+        finally
+        {
+            _updatingFromState = false;
+        }
+
+        ApplyHeader();
+    }
+
+    private void ApplyTelemetry()
+    {
+        if (_device?.Telemetry is not { } telemetry)
+        {
+            BatteryReadout.Text = "—";
+            ThermalReadout.Text = "—";
+            StorageReadout.Text = "—";
+            return;
+        }
+
+        BatteryReadout.Text = $"{(int)(telemetry.Battery * 100)}%  {Describe(telemetry.Power)}";
+        ThermalReadout.Text = telemetry.Thermal switch
+        {
+            "elevated" => "Elevated",
+            "high" => "High",
+            "critical" => "High",
+            _ => "Normal",
+        };
+        StorageReadout.Text = DescribeBytes(telemetry.StorageFreeBytes);
+    }
+
+    private void UpdateRecordingReadout()
+    {
+        // Filled in when the recording state message lands; the timer keeps the
+        // seconds moving between messages so the readout does not tick in jumps.
+    }
+
+    // MARK: - Actions
+
+    private async void OnTakePhoto(object sender, RoutedEventArgs e)
+    {
+        if (_device is null) return;
+        await _device.Session.SendControlAsync(ControlType.PhotoCapture,
+            new PhotoCapturePayload { Target = CaptureTarget.Both, RequestId = 1 });
+    }
+
+    private async void OnToggleRecording(object sender, RoutedEventArgs e)
+    {
+        if (_device is null) return;
+
+        var starting = RecordLabel.Text == "Record";
+        if (starting)
+        {
+            await _device.Session.SendControlAsync(ControlType.RecordStart,
+                new RecordStartPayload
+                {
+                    Target = CaptureTarget.Both,
+                    SessionId = DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss"),
+                    StartedAtUs = MonotonicClock.NowUs(),
+                });
+            RecordLabel.Text = "Stop";
+            RecordGlyph.Width = RecordGlyph.Height = 9;
+            RecordingChip.Visibility = Visibility.Visible;
+            _recordingTimer.Start();
+        }
+        else
+        {
+            await _device.Session.SendControlAsync(ControlType.RecordStop,
+                new RecordStopPayload());
+            RecordLabel.Text = "Record";
+            RecordGlyph.Width = RecordGlyph.Height = 10;
+            RecordingChip.Visibility = Visibility.Collapsed;
+            _recordingTimer.Stop();
+        }
+    }
+
+    private async void OnToggleStreaming(object sender, RoutedEventArgs e)
+    {
+        if (_device is null) return;
+        if (StreamToggle.IsChecked == true)
+        {
+            await _device.StartStreamingAsync(ProfileFromSettings());
+        }
+        else
+        {
+            await _device.StopStreamingAsync();
+        }
+    }
+
+    private void OnConnectHelpClick(object sender, RoutedEventArgs e) =>
+        Frame.Navigate(typeof(DevicesPage));
+
+    // MARK: - Control handlers
+
+    private void OnLensChanged(object sender, SelectionChangedEventArgs e) =>
+        Send(m => m.LensId = TagOf(LensPicker));
+
+    private void OnResolutionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var tag = TagOf(ResolutionPicker);
+        if (tag is null) return;
+        var parts = tag.Split('x');
+        if (parts.Length != 2 || !int.TryParse(parts[0], out var width)
+            || !int.TryParse(parts[1], out var height)) return;
+
+        Send(m => { m.Width = width; m.Height = height; });
+    }
+
+    private void OnFrameRateChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (int.TryParse(TagOf(FrameRatePicker), out var fps)) Send(m => m.Fps = fps);
+    }
+
+    private void OnExposureModeChanged(object sender, SelectionChangedEventArgs e) =>
+        Send(m => m.ExposureMode = TagOf(ExposureModePicker) == "manual"
+            ? ExposureMode.Manual : ExposureMode.Auto);
+
+    private void OnWhiteBalanceModeChanged(object sender, SelectionChangedEventArgs e) =>
+        Send(m => m.WhiteBalanceMode = TagOf(WhiteBalanceModePicker) == "manual"
+            ? WhiteBalanceMode.Manual : WhiteBalanceMode.Auto);
+
+    private void OnFocusModeChanged(object sender, SelectionChangedEventArgs e) =>
+        Send(m => m.FocusMode = TagOf(FocusModePicker) switch
+        {
+            "manual" => FocusMode.Manual,
+            "single" => FocusMode.Single,
+            _ => FocusMode.Continuous,
+        });
+
+    private void OnEvChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        EvReadout.Text = $"{e.NewValue:+0.0;-0.0;0.0} EV";
+        Send(m => m.Ev = Math.Round(e.NewValue, 1));
+    }
+
+    private void OnIsoChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        IsoReadout.Text = $"{e.NewValue:0}";
+        Send(m => m.Iso = Math.Round(e.NewValue));
+    }
+
+    private void OnShutterChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        var denominator = (int)Math.Round(1_000_000 / Math.Max(e.NewValue, 1));
+        ShutterReadout.Text = $"1/{denominator}";
+        Send(m => m.ExposureDurationUs = (int)e.NewValue);
+    }
+
+    private void OnTemperatureChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        TemperatureReadout.Text = $"{e.NewValue:0} K";
+        Send(m =>
+        {
+            m.Temperature = Math.Round(e.NewValue);
+            m.WhiteBalancePreset = WhiteBalancePreset.Custom;
+        });
+    }
+
+    private void OnTorchToggled(object sender, RoutedEventArgs e) =>
+        Send(m => m.Torch = TorchToggle.IsOn ? TorchMode.On : TorchMode.Off);
+
+    /// <summary>
+    /// Sends one mutation carrying only what this control touched. That is what
+    /// lets the phone and this window be edited at the same time without either
+    /// reverting the other; see <c>docs/PROTOCOL.md</c> section 5.4.
+    /// </summary>
+    private void Send(Action<CameraMutation> build)
+    {
+        if (_updatingFromState || _device is null) return;
+        var mutation = new CameraMutation();
+        build(mutation);
+        _ = _device.ApplyAsync(mutation);
+    }
+
+    // MARK: - Helpers
+
+    private StreamProfile ProfileFromSettings() => Services.Settings.StreamProfileName switch
+    {
+        "720p30" => StreamProfile.Webcam720p30,
+        "1080p60" => StreamProfile.Webcam1080p60,
+        _ => StreamProfile.Webcam1080p30,
+    };
+
+    private static string? TagOf(ComboBox box) =>
+        (box.SelectedItem as ComboBoxItem)?.Tag as string;
+
+    private static void SelectByTag(ComboBox box, string tag)
+    {
+        for (var i = 0; i < box.Items.Count; i++)
+        {
+            if (box.Items[i] is ComboBoxItem item && (item.Tag as string) == tag)
+            {
+                box.SelectedIndex = i;
+                return;
+            }
+        }
+        if (box.SelectedIndex < 0 && box.Items.Count > 0) box.SelectedIndex = 0;
+    }
+
+    private static string Describe(int width, int height) => (width, height) switch
+    {
+        (3840, 2160) or (4096, 2160) => "4K",
+        (2560, 1440) => "1440p",
+        (1920, 1080) => "1080p",
+        (1280, 720) => "720p",
+        _ => $"{width} × {height}",
+    };
+
+    private static string Describe(string value) => value switch
+    {
+        "front" => "Front",
+        "back" => "Back",
+        "usb" => "USB",
+        "wireless" => "Wireless",
+        "battery" => "Battery",
+        _ => value,
+    };
+
+    private static string DescribeBytes(ulong bytes)
+    {
+        const double gigabyte = 1024d * 1024 * 1024;
+        return bytes >= gigabyte
+            ? $"{bytes / gigabyte:0.#} GB free"
+            : $"{bytes / (1024d * 1024):0} MB free";
+    }
+}

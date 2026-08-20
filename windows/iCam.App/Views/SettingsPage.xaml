@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="ICam.App.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    mc:Ignorable="d">
+
+    <ScrollViewer Padding="24">
+        <StackPanel Spacing="20" MaxWidth="720" HorizontalAlignment="Left">
+
+            <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" />
+
+            <Border Style="{StaticResource ICamPanelStyle}">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="CAMERA OUTPUT"
+                               Style="{StaticResource ICamSectionHeaderStyle}" />
+
+                    <Grid>
+                        <StackPanel>
+                            <TextBlock Text="iCam Camera" />
+                            <TextBlock x:Name="VirtualCameraState"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <Button x:Name="VirtualCameraButton" HorizontalAlignment="Right"
+                                VerticalAlignment="Center" Content="Enable"
+                                Click="OnEnableVirtualCamera" />
+                    </Grid>
+
+                    <InfoBar x:Name="VirtualCameraInfo" IsOpen="False" IsClosable="False"
+                             Severity="Informational" />
+
+                    <Grid>
+                        <StackPanel MaxWidth="440" HorizontalAlignment="Left">
+                            <TextBlock Text="Quality sent from iPhone" />
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"
+                                       Text="Separate from what your iPhone records. The recording on the iPhone keeps full quality no matter what is set here." />
+                        </StackPanel>
+                        <ComboBox x:Name="ProfilePicker" HorizontalAlignment="Right"
+                                  VerticalAlignment="Center" MinWidth="130"
+                                  SelectionChanged="OnProfileChanged">
+                            <ComboBoxItem Content="720p 30" Tag="720p30" />
+                            <ComboBoxItem Content="1080p 30" Tag="1080p30" />
+                            <ComboBoxItem Content="1080p 60" Tag="1080p60" />
+                        </ComboBox>
+                    </Grid>
+
+                    <ToggleSwitch x:Name="AutoStreamToggle"
+                                  Header="Start sending as soon as an iPhone connects"
+                                  Toggled="OnAutoStreamToggled" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource ICamPanelStyle}">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="BEHAVIOUR"
+                               Style="{StaticResource ICamSectionHeaderStyle}" />
+                    <ToggleSwitch x:Name="TrayToggle"
+                                  Header="Keep iCam running when the window is closed"
+                                  OnContent="While an iPhone is connected"
+                                  OffContent="Close iCam completely"
+                                  Toggled="OnTrayToggled" />
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Text="Closing the window during a call would otherwise remove iCam Camera from the call." />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource ICamPanelStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="PRIVACY"
+                               Style="{StaticResource ICamSectionHeaderStyle}" />
+                    <TextBlock TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="iCam has no account, no cloud and no analytics. Video and audio travel only between your iPhone and the computers you have paired with, encrypted, and nowhere else." />
+                    <HyperlinkButton Content="Open the log folder" Click="OnOpenLogs"
+                                     HorizontalAlignment="Left" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource ICamPanelStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="ABOUT" Style="{StaticResource ICamSectionHeaderStyle}" />
+                    <Grid>
+                        <TextBlock Text="Version" />
+                        <TextBlock x:Name="VersionText" HorizontalAlignment="Right"
+                                   Style="{StaticResource ICamReadoutTextStyle}" />
+                    </Grid>
+                    <Grid>
+                        <TextBlock Text="Identity key" />
+                        <TextBlock x:Name="FingerprintText" HorizontalAlignment="Right"
+                                   Style="{StaticResource ICamReadoutTextStyle}" />
+                    </Grid>
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Text="Your iPhone recognises this computer by its key, not by its name or its address." />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

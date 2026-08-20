@@ -72,3 +72,47 @@ jobs:
           path: windows/TestResults
           if-no-files-found: ignore
           retention-days: 7
+
+  app:
+    name: Desktop application
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Add MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore
+        working-directory: windows
+        run: dotnet restore iCam.App/iCam.App.csproj -r win-x64
+
+      - name: Build
+        working-directory: windows
+        run: >
+          dotnet build iCam.App/iCam.App.csproj
+          --configuration Release
+          --no-restore
+          -r win-x64
+          -p:Platform=x64
+
+      - name: Publish
+        working-directory: windows
+        run: >
+          dotnet publish iCam.App/iCam.App.csproj
+          --configuration Release
+          -r win-x64
+          -p:Platform=x64
+          -o publish
+
+      - name: Upload the build
+        uses: actions/upload-artifact@v4
+        with:
+          name: iCam-windows-x64
+          path: windows/publish
+          retention-days: 14
