@@ -81,6 +81,10 @@ public sealed class VirtualCameraPipe : IAsyncDisposable
 
                 lock (_writeLock)
                 {
+                    // Newest client wins. Windows creates a fresh media source
+                    // every time the camera is opened, and the previous one may
+                    // still be holding its end: keeping the old stream would
+                    // send frames to a corpse.
                     _stream?.Dispose();
                     _stream = server;
                 }
@@ -92,9 +96,11 @@ public sealed class VirtualCameraPipe : IAsyncDisposable
                 FormatRequested?.Invoke(RequestedWidth, RequestedHeight, RequestedFps);
                 ConnectionChanged?.Invoke(true);
 
-                // The client never speaks again; it only reads. Waiting for it
-                // to disappear is how this loop learns to accept the next one.
-                await WaitForDisconnectAsync(token).ConfigureAwait(false);
+                // Straight back to listening rather than waiting for this client
+                // to leave. A client only ever reads, so there is no traffic to
+                // notice its death in — and a listener that is not waiting turns
+                // the next connect into ERROR_PIPE_BUSY, which the DLL can only
+                // report as "iCam is not running".
             }
             catch (OperationCanceledException)
             {
@@ -108,29 +114,6 @@ public sealed class VirtualCameraPipe : IAsyncDisposable
                 server?.Dispose();
                 await Task.Delay(500, token).ConfigureAwait(false);
             }
-        }
-    }
-
-    private async Task WaitForDisconnectAsync(CancellationToken token)
-    {
-        while (!token.IsCancellationRequested)
-        {
-            NamedPipeServerStream? current;
-            lock (_writeLock) current = _stream;
-            if (current is null || !current.IsConnected) break;
-            await Task.Delay(250, token).ConfigureAwait(false);
-        }
-
-        lock (_writeLock)
-        {
-            _stream?.Dispose();
-            _stream = null;
-        }
-        if (IsConnected)
-        {
-            IsConnected = false;
-            Log.Media.Info("iCam Camera disconnected");
-            ConnectionChanged?.Invoke(false);
         }
     }
 
@@ -200,22 +183,30 @@ public sealed class VirtualCameraPipe : IAsyncDisposable
     {
         var security = new PipeSecurity();
 
-        var authenticated = new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null);
-        security.AddAccessRule(new PipeAccessRule(
-            authenticated, PipeAccessRights.ReadWrite, AccessControlType.Allow));
+        // Synchronize matters as much as ReadWrite: without it CreateFile on
+        // the client side fails with access denied, which is indistinguishable
+        // from iCam not running at all.
+        const PipeAccessRights rights = PipeAccessRights.ReadWrite
+                                      | PipeAccessRights.Synchronize;
 
-        var localService = new SecurityIdentifier(WellKnownSidType.LocalServiceSid, null);
-        security.AddAccessRule(new PipeAccessRule(
-            localService, PipeAccessRights.ReadWrite, AccessControlType.Allow));
-
-        var system = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
-        security.AddAccessRule(new PipeAccessRule(
-            system, PipeAccessRights.ReadWrite, AccessControlType.Allow));
+        foreach (var account in new[]
+                 {
+                     WellKnownSidType.AuthenticatedUserSid,
+                     WellKnownSidType.LocalServiceSid,
+                     WellKnownSidType.LocalSystemSid,
+                     WellKnownSidType.NetworkServiceSid,
+                 })
+        {
+            security.AddAccessRule(new PipeAccessRule(
+                new SecurityIdentifier(account, null), rights, AccessControlType.Allow));
+        }
 
         return NamedPipeServerStreamAcl.Create(
             PipeName,
             PipeDirection.InOut,
-            maxNumberOfServerInstances: 1,
+            // More than one, so a newcomer is never refused while a stale
+            // instance is still being cleaned up.
+            maxNumberOfServerInstances: 4,
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.WriteThrough,
             inBufferSize: 64 * 1024,

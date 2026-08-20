@@ -22,13 +22,17 @@ std::mutex& LogMutex() {
 // thousands of times a second, and a file write per call would cost more than
 // the frames do.
 //
-//   reg add HKCU\Software\iCam /v VirtualCameraLogging /t REG_DWORD /d 1
+// Read from HKLM, not HKCU: this DLL runs inside the Frame Server, as
+// LocalService, whose HKCU is not the user's. A per-user flag here is
+// invisible to the only process that would honour it.
+//
+//   reg add HKLM\Software\iCam /v VirtualCameraLogging /t REG_DWORD /d 1 /reg:64
 bool LoggingEnabled() {
     static const bool enabled = [] {
         DWORD value = 0;
         DWORD size = sizeof(value);
         DWORD type = REG_DWORD;
-        const LSTATUS status = RegGetValueW(HKEY_CURRENT_USER, L"Software\\iCam",
+        const LSTATUS status = RegGetValueW(HKEY_LOCAL_MACHINE, L"Software\\iCam",
                                             L"VirtualCameraLogging", RRF_RT_REG_DWORD,
                                             &type, &value, &size);
         return status == ERROR_SUCCESS && value != 0;

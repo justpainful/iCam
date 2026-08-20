@@ -190,13 +190,10 @@ IFACEMETHODIMP MediaStream::RequestSample(IUnknown* token) {
     const HRESULT queued =
         queue->QueueEventParamUnk(MEMediaSample, GUID_NULL, S_OK, sample.Get());
 
-    // Only the first few and then occasionally: at thirty frames a second this
-    // would otherwise be the largest file on the disk.
-    static std::atomic<UINT64> logged{0};
-    const UINT64 count = logged.fetch_add(1);
-    if (count < 5 || count % 500 == 0) {
-        LogLine("RequestSample #%llu: token=%p queued=0x%08X", count,
-                static_cast<void*>(token), static_cast<unsigned>(queued));
+    // Only when something goes wrong: at thirty frames a second, a line per
+    // sample would be the largest file on the disk within an hour.
+    if (FAILED(queued)) {
+        LogLine("RequestSample: queue failed 0x%08X", static_cast<unsigned>(queued));
     }
     return queued;
 }

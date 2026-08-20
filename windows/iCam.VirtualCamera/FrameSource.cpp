@@ -43,6 +43,9 @@ void FrameSource::Stop() {
 }
 
 void FrameSource::Disconnect() {
+    if (connected_.load(std::memory_order_relaxed)) {
+        LogLine("lost the link to iCam: %lu", GetLastError());
+    }
     connected_.store(false, std::memory_order_relaxed);
     HANDLE pipe = pipe_;
     pipe_ = INVALID_HANDLE_VALUE;
@@ -55,7 +58,17 @@ void FrameSource::Disconnect() {
 bool FrameSource::ConnectOnce() {
     HANDLE pipe = CreateFileW(ICAM_PIPE_NAME, GENERIC_READ | GENERIC_WRITE, 0, nullptr,
                               OPEN_EXISTING, 0, nullptr);
-    if (pipe == INVALID_HANDLE_VALUE) return false;
+    if (pipe == INVALID_HANDLE_VALUE) {
+        const DWORD error = GetLastError();
+        // ERROR_FILE_NOT_FOUND simply means iCam is not running, which the card
+        // already says. Anything else looks identical to the user and is worth
+        // a line -- ERROR_PIPE_BUSY in particular, which is what a stale
+        // connection holding the only instance produces.
+        if (error != ERROR_FILE_NOT_FOUND) {
+            LogLine("pipe connect failed: %lu", error);
+        }
+        return false;
+    }
 
     PipeRequest request{};
     request.magic = kRequestMagic;
@@ -73,6 +86,7 @@ bool FrameSource::ConnectOnce() {
 
     pipe_ = pipe;
     connected_.store(true, std::memory_order_relaxed);
+    LogLine("connected to iCam");
     return true;
 }
 
