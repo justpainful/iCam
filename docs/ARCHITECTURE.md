@@ -161,15 +161,33 @@ where that is true, and it is deliberate.
 ## Windows media path
 
 Decode is `MediaStreamSource` fed with AVCC access units and a codec private
-blob, rendered by `MediaPlayerElement` with `RealTimePlayback = true`. That is
-the native, hardware-accelerated, zero-third-party path.
+blob, hardware-accelerated by Media Foundation. That is the native,
+zero-third-party path.
+
+From there, **one pipeline serves both outputs**:
+
+```
+   decoded frame  ──►  scale on the GPU  ──►  NV12  ──►  grade  ──┬──►  the window
+   (frame server)      (to the negotiated                          │
+                        camera size)                               └──►  iCam Camera
+```
+
+The window draws that result itself onto a canvas rather than letting the
+player present it. Two things follow, and both matter:
+
+- **The preview is the outgoing picture**, not an approximation of it — the
+  same buffer, the same grade, the same 4:2:0 chroma the people on the call
+  receive. Image adjustments are therefore visible where they are set.
+- **The expensive work happens once.** Decoding, scaling and grading separately
+  for the window and for the camera would double the only genuinely costly step
+  in this pipeline.
 
 The virtual camera is a separate out-of-process COM server registered through
-`MFCreateVirtualCamera`, so **the iCam window does not have to be open, or even
-running, for `iCam Camera` to keep working**. The app and the camera
-communicate through a named shared-memory ring buffer of NV12 frames plus a
-named event. That decoupling is the reason `iCam Camera` does not vanish from
-Zoom when the user closes the window.
+`MFCreateVirtualCamera`, loaded by the Windows Frame Server rather than by
+iCam. That decoupling is why closing the iCam window does not remove
+`iCam Camera` from a call already in progress. Frames reach it over a named
+pipe — not the shared-memory ring anyone would reach for first, for reasons
+worth reading in `docs/VIRTUAL-CAMERA.md`.
 
 ---
 
