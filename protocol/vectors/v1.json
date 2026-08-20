@@ -152,7 +152,9 @@
         "contrast": -0.1,
         "saturation": 0.5,
         "warmth": 0.35,
-        "sharpness": -0.2
+        "sharpness": -0.2,
+        "lowLight": 0.6,
+        "beauty": 0.4
       }
     },
     {

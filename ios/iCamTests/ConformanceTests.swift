@@ -220,6 +220,8 @@ final class ConformanceTests: XCTestCase {
         XCTAssertEqual(state.saturation, 0.5)
         XCTAssertEqual(state.warmth, 0.35)
         XCTAssertEqual(state.sharpness, -0.2)
+        XCTAssertEqual(state.lowLight, 0.6)
+        XCTAssertEqual(state.beauty, 0.4)
 
         // And round-trips back to the same tree, so the phone can echo a state
         // the PC sent without altering it.

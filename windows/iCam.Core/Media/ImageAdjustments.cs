@@ -21,11 +21,12 @@ public enum VideoRange
 }
 
 /// <summary>
-/// The five image controls, as the user left them.
+/// The image controls, as the user left them.
 ///
-/// Each is zero when untouched and reaches −1 and +1 at the ends of its
-/// slider, so a default value means "leave the picture alone" and the type has
-/// no invalid state a caller has to remember to avoid.
+/// Each is zero when untouched. The symmetric five reach −1 and +1 at the ends
+/// of their sliders; low light and beauty only have one direction to go, so
+/// they run 0 to 1. Either way a default value means "leave the picture alone"
+/// and the type has no invalid state a caller has to remember to avoid.
 ///
 /// These apply to the derived outputs only — the preview and <c>iCam
 /// Camera</c>. The master recording on the phone never sees them; see
@@ -48,19 +49,33 @@ public readonly record struct ImageAdjustments
     /// <summary>Positive sharpens, negative softens. At −1 the detail layer is gone.</summary>
     public double Sharpness { get; init; }
 
-    public static ImageAdjustments None => default;
-
-    public bool IsIdentity => !TouchesTone && !TouchesColour && !TouchesDetail;
+    /// <summary>
+    /// Rescues a dim room: a shadow-weighted lift that leaves true black and
+    /// the highlights alone. 0 to 1 — a dark scene has only one problem.
+    /// </summary>
+    public double LowLight { get; init; }
 
     /// <summary>
-    /// Which of the three passes have anything to do. A user who moved one
-    /// slider should pay for one pass, not for all of them.
+    /// Skin smoothing: flattens low-amplitude texture — pores, blemishes —
+    /// while real edges pass through untouched. 0 to 1.
     /// </summary>
-    internal bool TouchesTone => Brightness != 0 || Contrast != 0;
+    public double Beauty { get; init; }
+
+    public static ImageAdjustments None => default;
+
+    public bool IsIdentity => !TouchesTone && !TouchesColour && !TouchesDetail && !TouchesSkin;
+
+    /// <summary>
+    /// Which of the passes have anything to do. A user who moved one slider
+    /// should pay for one pass, not for all of them.
+    /// </summary>
+    internal bool TouchesTone => Brightness != 0 || Contrast != 0 || LowLight != 0;
 
     internal bool TouchesColour => Saturation != 0 || Warmth != 0;
 
     internal bool TouchesDetail => Sharpness != 0;
+
+    internal bool TouchesSkin => Beauty != 0;
 
     /// <summary>
     /// Pins every value into −1…+1, and reads a NaN as untouched. The values
@@ -74,6 +89,8 @@ public readonly record struct ImageAdjustments
         Saturation = Pin(Saturation),
         Warmth = Pin(Warmth),
         Sharpness = Pin(Sharpness),
+        LowLight = PinPositive(LowLight),
+        Beauty = PinPositive(Beauty),
     };
 
     /// <summary>The image half of the camera state the phone published.</summary>
@@ -84,8 +101,13 @@ public readonly record struct ImageAdjustments
         Saturation = state.Saturation,
         Warmth = state.Warmth,
         Sharpness = state.Sharpness,
+        LowLight = state.LowLight,
+        Beauty = state.Beauty,
     }.Clamped();
 
     private static double Pin(double value) =>
         double.IsNaN(value) ? 0 : Math.Clamp(value, -1, 1);
+
+    private static double PinPositive(double value) =>
+        double.IsNaN(value) ? 0 : Math.Clamp(value, 0, 1);
 }

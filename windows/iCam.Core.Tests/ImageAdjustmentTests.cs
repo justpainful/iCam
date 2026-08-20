@@ -444,4 +444,144 @@ public class ImageAdjustmentTests
 
         Assert.Equal(Luma(pinned, 0, 0), Luma(wild, 0, 0));
     }
+
+    // MARK: - Low light
+
+    [Fact]
+    public void LowLightLiftsTheShadows()
+    {
+        var frame = Frame(60, 128, 128); // a face in a dim room
+        With(new ImageAdjustments { LowLight = 1 }).Apply(frame, Width, Height);
+        Assert.True(Luma(frame, 0, 0) > 80,
+            $"a shadow at 60 should be rescued, got {Luma(frame, 0, 0)}");
+    }
+
+    [Fact]
+    public void LowLightLeavesBlackWhiteAndTheHighlightsAlone()
+    {
+        var black = Frame(16, 128, 128);
+        var white = Frame(235, 128, 128);
+        var highlight = Frame(220, 128, 128);
+
+        var adjuster = With(new ImageAdjustments { LowLight = 1 });
+        adjuster.Apply(black, Width, Height);
+        adjuster.Apply(white, Width, Height);
+        adjuster.Apply(highlight, Width, Height);
+
+        // Black staying black is what keeps sensor noise dark instead of
+        // grey, and the highlights barely moving is what makes this a rescue
+        // rather than a second brightness slider.
+        Assert.Equal(16, Luma(black, 0, 0));
+        Assert.Equal(235, Luma(white, 0, 0));
+        Assert.True(Math.Abs(Luma(highlight, 0, 0) - 220) <= 4,
+            $"a highlight at 220 should barely move, got {Luma(highlight, 0, 0)}");
+    }
+
+    [Fact]
+    public void LowLightIsNegativeProofAndNeverExceedsOne()
+    {
+        var negative = ImageAdjustments.From(new CameraState { LowLight = -3, Beauty = 7 });
+        Assert.Equal(0, negative.LowLight);
+        Assert.Equal(1, negative.Beauty);
+    }
+
+    // MARK: - Beauty
+
+    // Beauty measures a pixel against a quarter-scale blur, so its tests need
+    // room for that scale to exist.
+    private const int SkinWidth = 64;
+    private const int SkinHeight = 32;
+
+    [Fact]
+    public void BeautyFlattensPoreScaleTexture()
+    {
+        var frame = Frame(120, 128, 128, SkinWidth, SkinHeight);
+        // Skin: a mid-tone with small-amplitude speckle.
+        var noise = new Random(7);
+        for (var y = 0; y < SkinHeight; y++)
+        {
+            for (var x = 0; x < SkinWidth; x++)
+            {
+                frame[y * SkinWidth + x] = (byte)(120 + noise.Next(-8, 9));
+            }
+        }
+
+        var before = Deviation(frame);
+        With(new ImageAdjustments { Beauty = 1 }).Apply(frame, SkinWidth, SkinHeight);
+        var after = Deviation(frame);
+
+        Assert.True(after < before * 0.5,
+            $"speckle should at least halve, went from {before:0.0} to {after:0.0}");
+    }
+
+    [Fact]
+    public void BeautyLeavesARealEdgeStanding()
+    {
+        var frame = Frame(0, 128, 128, SkinWidth, SkinHeight);
+        for (var y = 0; y < SkinHeight; y++)
+        {
+            for (var x = 0; x < SkinWidth; x++)
+            {
+                frame[y * SkinWidth + x] = (byte)(x < SkinWidth / 2 ? 60 : 180);
+            }
+        }
+
+        With(new ImageAdjustments { Beauty = 1 }).Apply(frame, SkinWidth, SkinHeight);
+
+        // The step is 120 luma steps — far past the knee. The pixels near it
+        // sit on the blur's flank, so a small pull toward the base is the
+        // nature of the algorithm; what must not happen is the visible halo a
+        // plain blur leaves. Three steps against a 120-step cliff is under
+        // the noise floor of any real sensor.
+        var left = Luma(frame, SkinWidth / 2 - 4, SkinHeight / 2, SkinWidth);
+        var right = Luma(frame, SkinWidth / 2 + 3, SkinHeight / 2, SkinWidth);
+        Assert.True(Math.Abs(left - 60) <= 3, $"left flank moved to {left}");
+        Assert.True(Math.Abs(right - 180) <= 3, $"right flank moved to {right}");
+    }
+
+    [Fact]
+    public void BeautyOnAFlatFieldIsTheIdentity()
+    {
+        var frame = Frame(120, 128, 128, SkinWidth, SkinHeight);
+        var reference = (byte[])frame.Clone();
+        With(new ImageAdjustments { Beauty = 1 }).Apply(frame, SkinWidth, SkinHeight);
+        Assert.Equal(reference, frame);
+    }
+
+    [Fact]
+    public void BeautySurvivesSizesThatDoNotDivideByFour()
+    {
+        // 22x14 quarter-scales to 6x4 with ragged edge blocks; the pass must
+        // still touch every pixel and nothing beyond the picture.
+        const int width = 22;
+        const int height = 14;
+        var frame = Frame(120, 128, 128, width, height, stride: 26);
+        With(new ImageAdjustments { Beauty = 1 }).Apply(frame, width, height, stride: 26);
+
+        // The padding between picture and stride is not the pass's to touch.
+        Assert.Equal(Sentinel, frame[width]);
+    }
+
+    [Fact]
+    public void BeautyNeverTouchesColour()
+    {
+        var frame = Frame(120, 90, 170, SkinWidth, SkinHeight);
+        With(new ImageAdjustments { Beauty = 1 }).Apply(frame, SkinWidth, SkinHeight);
+        Assert.Equal(90, frame[SkinWidth * SkinHeight]);
+        Assert.Equal(170, frame[SkinWidth * SkinHeight + 1]);
+    }
+
+    private static double Deviation(byte[] frame)
+    {
+        double mean = 0;
+        for (var i = 0; i < SkinWidth * SkinHeight; i++) mean += frame[i];
+        mean /= SkinWidth * SkinHeight;
+
+        double sum = 0;
+        for (var i = 0; i < SkinWidth * SkinHeight; i++)
+        {
+            sum += (frame[i] - mean) * (frame[i] - mean);
+        }
+        return Math.Sqrt(sum / (SkinWidth * SkinHeight));
+    }
 }

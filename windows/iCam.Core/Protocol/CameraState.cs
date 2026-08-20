@@ -109,12 +109,15 @@ public sealed record CameraState
     [JsonPropertyName("orientation")] public OrientationLock Orientation { get; init; } = OrientationLock.Auto;
 
     // Applied to the derived outputs on the PC, never to the master recording.
-    // Each runs -1 to +1 and means "leave it alone" at 0.
+    // Each runs -1 to +1 and means "leave it alone" at 0, except lowLight and
+    // beauty, which only have one direction to go and run 0 to 1.
     [JsonPropertyName("brightness")] public double Brightness { get; init; }
     [JsonPropertyName("contrast")] public double Contrast { get; init; }
     [JsonPropertyName("saturation")] public double Saturation { get; init; }
     [JsonPropertyName("warmth")] public double Warmth { get; init; }
     [JsonPropertyName("sharpness")] public double Sharpness { get; init; }
+    [JsonPropertyName("lowLight")] public double LowLight { get; init; }
+    [JsonPropertyName("beauty")] public double Beauty { get; init; }
 
     /// <summary>8333 µs reads as 1/120.</summary>
     [JsonIgnore]
@@ -166,6 +169,8 @@ public sealed class CameraMutation
     [JsonPropertyName("saturation")] public double? Saturation { get; set; }
     [JsonPropertyName("warmth")] public double? Warmth { get; set; }
     [JsonPropertyName("sharpness")] public double? Sharpness { get; set; }
+    [JsonPropertyName("lowLight")] public double? LowLight { get; set; }
+    [JsonPropertyName("beauty")] public double? Beauty { get; set; }
 }
 
 /// <summary>What this computer receives. Unrelated to what the phone records.</summary>

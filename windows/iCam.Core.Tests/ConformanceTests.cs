@@ -234,6 +234,8 @@ public class ConformanceTests
                     Assert.Equal(0.25, state.Brightness);
                     Assert.Equal(0.35, state.Warmth);
                     Assert.Equal(-0.2, state.Sharpness);
+                    Assert.Equal(0.6, state.LowLight);
+                    Assert.Equal(0.4, state.Beauty);
                     // Re-encoding must produce the same tree, so the phone can
                     // echo a state without altering it.
                     Assert.Equal(

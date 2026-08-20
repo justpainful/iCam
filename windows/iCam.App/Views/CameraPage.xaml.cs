@@ -452,12 +452,16 @@ public sealed partial class CameraPage : Page
             SaturationSlider.Value = state.Saturation;
             WarmthSlider.Value = state.Warmth;
             SharpnessSlider.Value = state.Sharpness;
+            LowLightSlider.Value = state.LowLight;
+            BeautySlider.Value = state.Beauty;
 
             BrightnessReadout.Text = Describe(state.Brightness);
             ContrastReadout.Text = Describe(state.Contrast);
             SaturationReadout.Text = Describe(state.Saturation);
             WarmthReadout.Text = Describe(state.Warmth);
             SharpnessReadout.Text = Describe(state.Sharpness);
+            LowLightReadout.Text = DescribePercent(state.LowLight);
+            BeautyReadout.Text = DescribePercent(state.Beauty);
         }
         finally
         {
@@ -645,9 +649,23 @@ public sealed partial class CameraPage : Page
         Send(m => m.Sharpness = Math.Round(e.NewValue, 2));
     }
 
+    private void OnLowLightChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        LowLightReadout.Text = DescribePercent(e.NewValue);
+        Send(m => m.LowLight = Math.Round(e.NewValue, 2));
+    }
+
+    private void OnBeautyChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        BeautyReadout.Text = DescribePercent(e.NewValue);
+        Send(m => m.Beauty = Math.Round(e.NewValue, 2));
+    }
+
+    private static string DescribePercent(double value) => $"{value * 100:0}%";
+
     /// <summary>
-    /// All five in one mutation, so they come back together as a single state
-    /// rather than as five the phone has to reconcile in turn.
+    /// All of them in one mutation, so they come back together as a single
+    /// state rather than as seven the phone has to reconcile in turn.
     /// </summary>
     private void OnResetImage(object sender, RoutedEventArgs e) =>
         Send(m =>
@@ -657,6 +675,8 @@ public sealed partial class CameraPage : Page
             m.Saturation = 0;
             m.Warmth = 0;
             m.Sharpness = 0;
+            m.LowLight = 0;
+            m.Beauty = 0;
         });
 
     /// <summary>

@@ -275,6 +275,8 @@ static JsonArray ControlJson()
         Saturation = 0.5,
         Warmth = 0.35,
         Sharpness = -0.2,
+        LowLight = 0.6,
+        Beauty = 0.4,
     };
     cases.Add(new JsonObject
     {

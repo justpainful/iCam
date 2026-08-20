@@ -290,6 +290,30 @@
                             <Slider x:Name="SharpnessSlider" Minimum="-1" Maximum="1"
                                     StepFrequency="0.05" ValueChanged="OnSharpnessChanged" />
                         </StackPanel>
+
+                        <StackPanel Spacing="6">
+                            <Grid>
+                                <TextBlock Text="Low Light Boost"
+                                           Style="{StaticResource CaptionTextBlockStyle}" />
+                                <TextBlock x:Name="LowLightReadout" Text="0%"
+                                           HorizontalAlignment="Right"
+                                           Style="{StaticResource ICamReadoutTextStyle}" />
+                            </Grid>
+                            <Slider x:Name="LowLightSlider" Minimum="0" Maximum="1"
+                                    StepFrequency="0.05" ValueChanged="OnLowLightChanged" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="6">
+                            <Grid>
+                                <TextBlock Text="Beauty"
+                                           Style="{StaticResource CaptionTextBlockStyle}" />
+                                <TextBlock x:Name="BeautyReadout" Text="0%"
+                                           HorizontalAlignment="Right"
+                                           Style="{StaticResource ICamReadoutTextStyle}" />
+                            </Grid>
+                            <Slider x:Name="BeautySlider" Minimum="0" Maximum="1"
+                                    StepFrequency="0.05" ValueChanged="OnBeautyChanged" />
+                        </StackPanel>
                     </StackPanel>
 
                     <TextBlock Style="{StaticResource CaptionTextBlockStyle}"

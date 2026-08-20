@@ -332,13 +332,14 @@ commands. Every state carries a version:
   "stabilization":"standard", "torch":"off", "torchLevel":1.0,
   "mirrored":false, "orientation":"auto",
   "brightness":0.0, "contrast":0.0, "saturation":0.0, "warmth":0.0,
-  "sharpness":0.0 }
+  "sharpness":0.0, "lowLight":0.0, "beauty":0.0 }
 ```
 
-The last five are the **image controls**, and they are the one part of this
+The last seven are the **image controls**, and they are the one part of this
 state the phone does not act on. Each runs `-1.0` to `+1.0` and means "leave it
-alone" at `0.0`. They live here rather than in a message of their own because
-both ends must show the same five sliders, and because they are settings the
+alone" at `0.0`, except `lowLight` and `beauty`, which only have one direction
+to go and run `0.0` to `1.0`. They live here rather than in a message of their
+own because both ends must show the same sliders, and because they are settings the
 user expects to survive a reconnect — but they are applied by the PC, to the
 preview and to `iCam Camera`, and never to the master recording. See
 `docs/ARCHITECTURE.md`.

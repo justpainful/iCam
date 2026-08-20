@@ -105,12 +105,15 @@ struct CameraState: Codable, Equatable, Sendable {
     var orientation: OrientationLock = .auto
 
     // Image rendering (applied to derived outputs, never to the master).
-    // Each runs -1 to +1 and means "leave it alone" at 0.
+    // Each runs -1 to +1 and means "leave it alone" at 0, except lowLight and
+    // beauty, which only have one direction to go and run 0 to 1.
     var brightness: Double = 0
     var contrast: Double = 0
     var saturation: Double = 0
     var warmth: Double = 0
     var sharpness: Double = 0
+    var lowLight: Double = 0
+    var beauty: Double = 0
 
     enum CodingKeys: String, CodingKey {
         case version = "v"
@@ -121,6 +124,7 @@ struct CameraState: Codable, Equatable, Sendable {
         case focusMode, focusPosition, focusLocked, faceDrivenFocus
         case torch, torchLevel, mirrored, orientation
         case brightness, contrast, saturation, warmth, sharpness
+        case lowLight, beauty
     }
 
     /// Shutter denominator for display: 8333 µs reads as `1/120`.
@@ -170,6 +174,8 @@ struct CameraMutation: Codable, Equatable, Sendable {
     var saturation: Double?
     var warmth: Double?
     var sharpness: Double?
+    var lowLight: Double?
+    var beauty: Double?
 
     var isEmpty: Bool {
         lensId == nil && zoom == nil && lensLocked == nil
@@ -184,6 +190,7 @@ struct CameraMutation: Codable, Equatable, Sendable {
             && torch == nil && torchLevel == nil && mirrored == nil && orientation == nil
             && brightness == nil && contrast == nil && saturation == nil
             && warmth == nil && sharpness == nil
+            && lowLight == nil && beauty == nil
     }
 
     /// Applies every present key onto `state`. Clamping to what the hardware
@@ -227,6 +234,8 @@ struct CameraMutation: Codable, Equatable, Sendable {
         if let v = saturation { state.saturation = v }
         if let v = warmth { state.warmth = v }
         if let v = sharpness { state.sharpness = v }
+        if let v = lowLight { state.lowLight = v }
+        if let v = beauty { state.beauty = v }
     }
 }
 

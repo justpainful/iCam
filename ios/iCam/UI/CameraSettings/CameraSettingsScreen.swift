@@ -210,6 +210,14 @@ struct CameraSettingsScreen: View {
                         value: binding(\.sharpness, mutate: { $0.sharpness = $1 }),
                         range: -1 ... 1, step: 0.05,
                         format: { String(format: "%+.2f", $0) })
+            ValueSlider(title: String(localized: "Low Light Boost"),
+                        value: binding(\.lowLight, mutate: { $0.lowLight = $1 }),
+                        range: 0 ... 1, step: 0.05,
+                        format: { String(format: "%.0f%%", $0 * 100) })
+            ValueSlider(title: String(localized: "Beauty"),
+                        value: binding(\.beauty, mutate: { $0.beauty = $1 }),
+                        range: 0 ... 1, step: 0.05,
+                        format: { String(format: "%.0f%%", $0 * 100) })
         }
     }
 
