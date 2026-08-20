@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
     xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives"
     mc:Ignorable="d">
 
@@ -41,9 +42,13 @@
             <Border Grid.Row="1" CornerRadius="8" Background="{ThemeResource ICamStageBrush}"
                     BorderBrush="{ThemeResource ICamHairlineBrush}" BorderThickness="1">
                 <Grid>
-                    <MediaPlayerElement x:Name="Preview"
-                                        Stretch="Uniform"
-                                        AreTransportControlsEnabled="False" />
+                    <!-- The window draws the frames itself rather than letting
+                         the player present them. That is what lets the preview
+                         show the graded picture, and exactly the one being sent
+                         to iCam Camera rather than a prettier local copy. -->
+                    <canvas:CanvasControl x:Name="Preview"
+                                          ClearColor="#000000"
+                                          Draw="OnPreviewDraw" />
 
                     <!-- Every empty state is designed. This one tells the user
                          exactly what to do next. -->

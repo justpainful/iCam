@@ -6,6 +6,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Navigation;
+using Microsoft.Graphics.Canvas;
+using Microsoft.Graphics.Canvas.UI.Xaml;
 using Windows.Media.Core;
 using Windows.Media.Playback;
 
@@ -25,6 +27,14 @@ public sealed partial class CameraPage : Page
     private AppServices Services => App.Instance.Services;
     private ConnectedDevice? _device;
     private MediaPlayer? _player;
+
+    // The most recent picture, copied off the decoder's thread so drawing never
+    // races with the frame that is being produced.
+    private readonly Lock _frameLock = new();
+    private byte[]? _latestFrame;
+    private int _frameWidth;
+    private int _frameHeight;
+    private CanvasBitmap? _surface;
 
     /// <summary>
     /// Set while the page is writing values into its own controls, so their
@@ -95,12 +105,12 @@ public sealed partial class CameraPage : Page
             AutoPlay = true,
             IsLoopingEnabled = false,
         };
-        Preview.SetMediaPlayer(_player);
-
-        // The same player feeds iCam Camera. One decode serves the window and
-        // the virtual camera both; decoding twice would double the cost of the
-        // only genuinely expensive step in the pipeline.
-        Services.VirtualCamera.SetSource(_player, device.Image);
+        // One decode serves the window and iCam Camera both, and the grading
+        // happens once, before either sees the frame. So the preview is not an
+        // approximation of what is being sent — it is the same buffer.
+        Services.Frames.Image = device.Image;
+        Services.Frames.FrameReady += OnFrameReady;
+        Services.Frames.Attach(_player);
 
         EmptyState.Visibility = Visibility.Collapsed;
         Inspector.IsEnabled = true;
@@ -125,18 +135,91 @@ public sealed partial class CameraPage : Page
         }
         _device = null;
 
-        // Detached before the player is torn down, so the camera falls back to
-        // its own card rather than reading a disposed surface. Losing the
-        // iPhone must not remove iCam Camera from a call in progress.
-        Services.VirtualCamera.SetSource(null);
+        // Detached before the player is torn down, so nothing is reading a
+        // surface as it is disposed. iCam Camera keeps running and falls back
+        // to its own card: losing the iPhone must not remove the camera from a
+        // call in progress.
+        Services.Frames.FrameReady -= OnFrameReady;
+        Services.Frames.Attach(null);
+        Services.Frames.Image = null;
 
-        Preview.SetMediaPlayer(null);
         if (_player is not null)
         {
             (_player.Source as MediaSource)?.Dispose();
             _player.Dispose();
         }
         _player = null;
+
+        lock (_frameLock) _latestFrame = null;
+        Preview.Invalidate();
+    }
+
+    // MARK: - Drawing the picture
+
+    /// <summary>
+    /// Frames arrive on the decoder's thread. The bytes are copied under a lock
+    /// and the canvas is asked to redraw; uploading to the GPU from here would
+    /// touch a device the interface thread owns.
+    /// </summary>
+    private void OnFrameReady(ReadOnlyMemory<byte> nv12, ReadOnlyMemory<byte> display)
+    {
+        var width = Services.Frames.Width;
+        var height = Services.Frames.Height;
+        if (width <= 0 || height <= 0) return;
+
+        lock (_frameLock)
+        {
+            var needed = width * height * 4;
+            if (_latestFrame is null || _latestFrame.Length != needed)
+            {
+                _latestFrame = new byte[needed];
+            }
+            display.Span[..needed].CopyTo(_latestFrame);
+            _frameWidth = width;
+            _frameHeight = height;
+        }
+
+        DispatcherQueue.TryEnqueue(() => Preview.Invalidate());
+    }
+
+    private void OnPreviewDraw(CanvasControl sender, CanvasDrawEventArgs args)
+    {
+        int width;
+        int height;
+        lock (_frameLock)
+        {
+            if (_latestFrame is null) return;
+            width = _frameWidth;
+            height = _frameHeight;
+
+            if (_surface is null || _surface.SizeInPixels.Width != width
+                || _surface.SizeInPixels.Height != height)
+            {
+                _surface?.Dispose();
+                _surface = CanvasBitmap.CreateFromBytes(
+                    sender, _latestFrame, width, height,
+                    Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized);
+            }
+            else
+            {
+                // Reusing the bitmap rather than allocating one per frame: at
+                // thirty frames a second the allocations alone would keep the
+                // collector busy for no benefit.
+                _surface.SetPixelBytes(_latestFrame);
+            }
+        }
+
+        // Letterboxed rather than stretched. A face is not worth distorting to
+        // fill a rectangle.
+        var bounds = sender.Size;
+        var scale = Math.Min(bounds.Width / width, bounds.Height / height);
+        var drawn = new Windows.Foundation.Rect(
+            (bounds.Width - width * scale) / 2,
+            (bounds.Height - height * scale) / 2,
+            width * scale,
+            height * scale);
+
+        args.DrawingSession.DrawImage(_surface, drawn);
     }
 
     private void ApplyEmptyState()

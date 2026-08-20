@@ -1,5 +1,3 @@
-using Windows.Media.Playback;
-
 namespace ICam.App.Services;
 
 /// <summary>
@@ -26,9 +24,9 @@ public sealed class VirtualCameraService : IAsyncDisposable
     private readonly VirtualCameraPipe _pipe = new();
     private readonly VirtualCameraFeed _feed;
 
-    public VirtualCameraService()
+    public VirtualCameraService(DecodedFrameSource frames)
     {
-        _feed = new VirtualCameraFeed(_pipe);
+        _feed = new VirtualCameraFeed(_pipe, frames);
         _host.StateChanged += () => StateChanged?.Invoke();
         _pipe.ConnectionChanged += _ => StateChanged?.Invoke();
     }
@@ -60,25 +58,7 @@ public sealed class VirtualCameraService : IAsyncDisposable
         return _host.Start();
     }
 
-    public void Stop()
-    {
-        _feed.Attach(null);
-        _host.Stop();
-    }
-
-    /// <summary>
-    /// Points the camera at a decoded stream, with the image controls that
-    /// belong to the iPhone it is coming from. <c>null</c> detaches, and the
-    /// DLL falls back to its holding card — which is why losing the iPhone
-    /// does not remove the camera from a call in progress.
-    /// </summary>
-    public void SetSource(MediaPlayer? player, ICam.Core.Media.ImageAdjuster? image = null)
-    {
-        // Set before attaching, so the very first frame out is already graded
-        // rather than one frame of the raw picture slipping through.
-        _feed.Image = image;
-        _feed.Attach(player);
-    }
+    public void Stop() => _host.Stop();
 
     public async ValueTask DisposeAsync()
     {

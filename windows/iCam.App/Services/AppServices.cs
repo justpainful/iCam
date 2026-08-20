@@ -20,7 +20,10 @@ public sealed class AppServices : IAsyncDisposable
     public FileTrustStore Trust { get; }
     public SessionManager Sessions { get; }
     public ListenerService Listener { get; }
-    public VirtualCameraService VirtualCamera { get; } = new();
+    /// <summary>Decoded frames, produced once and read by both consumers.</summary>
+    public DecodedFrameSource Frames { get; } = new();
+
+    public VirtualCameraService VirtualCamera { get; }
     public AppSettings Settings { get; } = new();
 
     public string ComputerName => Environment.MachineName;
@@ -28,6 +31,7 @@ public sealed class AppServices : IAsyncDisposable
     public AppServices()
     {
         Identity = LoadOrCreateIdentity();
+        VirtualCamera = new VirtualCameraService(Frames);
         Trust = new FileTrustStore();
         Sessions = new SessionManager(DispatcherQueue.GetForCurrentThread());
         Listener = new ListenerService(Identity, Trust, ComputerName);
@@ -49,6 +53,7 @@ public sealed class AppServices : IAsyncDisposable
     {
         await Listener.DisposeAsync();
         await VirtualCamera.DisposeAsync();
+        Frames.Dispose();
         Identity.Dispose();
     }
 
