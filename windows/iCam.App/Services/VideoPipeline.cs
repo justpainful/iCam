@@ -21,8 +21,12 @@ namespace ICam.App.Services;
 /// </summary>
 public sealed class VideoPipeline : IDisposable
 {
-    /// <summary>At 30 fps this is a tenth of a second of slack, and no more.</summary>
-    private const int MaxQueuedFrames = 3;
+    /// <summary>
+    /// At 30 fps this is 66 ms of slack, and no more. Every queued frame is
+    /// latency the viewer watches; a live preview would always rather drop
+    /// one than wear it.
+    /// </summary>
+    private const int MaxQueuedFrames = 2;
 
     private readonly FrameQueue _frames = new(MaxQueuedFrames);
     private readonly Lock _lock = new();
@@ -36,9 +40,23 @@ public sealed class VideoPipeline : IDisposable
     private VideoCodec _codec = VideoCodec.H264;
     private uint _width;
     private uint _height;
-    private ulong _firstPtsUs;
-    private bool _hasFirstPts;
     private bool _awaitingKeyframe = true;
+
+    /// <summary>
+    /// The presentation clock is this computer's, not the phone's.
+    ///
+    /// Samples used to carry the phone's timestamps, and the player dutifully
+    /// presented them on its own clock — so the decoder's warm-up delay
+    /// became a permanent offset, and every stall and every part-per-million
+    /// of drift between the two clocks was *added to it*. A preview that was
+    /// half a second behind after a minute and two behind after ten. Stamping
+    /// each sample at its own arrival tells the player the truth about a live
+    /// feed: this frame's time is now.
+    /// </summary>
+    private readonly System.Diagnostics.Stopwatch _clock =
+        System.Diagnostics.Stopwatch.StartNew();
+    private long _sourceStartTicks;
+    private long _lastStampTicks;
 
     public ulong FramesRendered { get; private set; }
     public ulong FramesDropped => _frames.Dropped;
@@ -80,7 +98,6 @@ public sealed class VideoPipeline : IDisposable
             _configuration = parsed;
             _width = width;
             _height = height;
-            _hasFirstPts = false;
             _awaitingKeyframe = true;
             _frames.Clear();
         }
@@ -122,7 +139,6 @@ public sealed class VideoPipeline : IDisposable
         lock (_lock)
         {
             _frames.Clear();
-            _hasFirstPts = false;
             _awaitingKeyframe = true;
             _configuration = null;
         }
@@ -200,7 +216,15 @@ public sealed class VideoPipeline : IDisposable
 
     private void OnStarting(MediaStreamSource sender, MediaStreamSourceStartingEventArgs args)
     {
-        // A live source starts at zero and simply runs.
+        // A live source starts at zero and simply runs. Zero is *now*: sample
+        // times are measured from this moment, so the first frame is due the
+        // instant it arrives.
+        lock (_lock)
+        {
+            _sourceStartTicks = _clock.ElapsedTicks * 10_000_000 /
+                                System.Diagnostics.Stopwatch.Frequency;
+            _lastStampTicks = 0;
+        }
         args.Request.SetActualStartPosition(TimeSpan.Zero);
     }
 
@@ -217,25 +241,25 @@ public sealed class VideoPipeline : IDisposable
             // pipeline is closing — both of which really are the end of it.
             if (await _frames.DequeueAsync(token).ConfigureAwait(true) is not { } frame) return;
 
-            ulong offsetUs;
+            // Stamped at arrival, on this machine's clock — see the field. The
+            // few milliseconds ahead give the renderer a schedule to meet
+            // instead of a deadline already missed, and the strict monotonic
+            // floor keeps a burst of arrivals from carrying the same time.
+            long stampTicks;
             lock (_lock)
             {
-                if (!_hasFirstPts)
-                {
-                    // Timestamps are relative to the first frame we actually
-                    // show, so a session that starts hours into the phone's
-                    // uptime does not begin with a huge presentation time.
-                    _firstPtsUs = frame.PtsUs;
-                    _hasFirstPts = true;
-                }
-                offsetUs = frame.PtsUs >= _firstPtsUs ? frame.PtsUs - _firstPtsUs : 0;
+                stampTicks = Math.Max(_clock.ElapsedTicks * 10_000_000 /
+                                          System.Diagnostics.Stopwatch.Frequency
+                                          - _sourceStartTicks + 5 * 10_000,
+                                      _lastStampTicks + 10_000);
+                _lastStampTicks = stampTicks;
             }
 
             // `AsBuffer` is a .NET Framework era extension that modern .NET
             // does not carry; this is the projected equivalent.
             var buffer = CryptographicBuffer.CreateFromByteArray(frame.Data);
             var sample = MediaStreamSample.CreateFromBuffer(
-                buffer, TimeSpan.FromTicks((long)(offsetUs * 10)));
+                buffer, TimeSpan.FromTicks(stampTicks));
             sample.KeyFrame = frame.IsKeyframe;
             sample.Discontinuous = FramesRendered == 0;
 

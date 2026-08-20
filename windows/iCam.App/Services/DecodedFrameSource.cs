@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices.WindowsRuntime;
 using ICam.Core.Media;
 using Microsoft.Graphics.Canvas;
 using Windows.Media.Playback;
@@ -29,6 +30,9 @@ public sealed class DecodedFrameSource : IDisposable
     private CanvasDevice? _device;
     private CanvasRenderTarget? _target;
 
+    private byte[] _bgra = [];
+    private Windows.Storage.Streams.IBuffer? _bgraBuffer;
+    private bool _bufferWritesThrough = true;
     private byte[] _nv12 = [];
     private byte[] _display = [];
     private int _width;
@@ -127,7 +131,38 @@ public sealed class DecodedFrameSource : IDisposable
             // Scaling happens here, on the GPU, as part of the copy.
             sender.CopyFrameToVideoSurface(_target);
 
-            var bgra = _target.GetPixelBytes();
+            // Into a reused buffer. The allocating overload hands back three
+            // to eight megabytes of garbage per frame — a quarter of a
+            // gigabyte a second at 1080p30, and every collection it forces is
+            // a hitch the user can see.
+            if (_bgra.Length != _width * _height * 4)
+            {
+                _bgra = new byte[_width * _height * 4];
+                _bgraBuffer = _bgra.AsBuffer();
+            }
+
+            byte[] bgra;
+            if (_bufferWritesThrough)
+            {
+                _target.GetPixelBytes(_bgraBuffer!);
+                bgra = _bgra;
+
+                // Trust, verified once: if the interop wrapper turns out to
+                // copy instead of sharing the array's memory, the array stays
+                // all-zero — which no real frame is, alpha included. Fall back
+                // to the allocating call for good rather than show black.
+                if (FramesProduced == 0 && !_bgra.AsSpan().ContainsAnyExcept((byte)0))
+                {
+                    _bufferWritesThrough = false;
+                    Log.Media.Warn("Pixel readback does not share memory here; " +
+                                   "using the allocating path");
+                    bgra = _target.GetPixelBytes();
+                }
+            }
+            else
+            {
+                bgra = _target.GetPixelBytes();
+            }
             Nv12Encoder.Convert(bgra, _width * 4, _nv12, _stride, _width, _height);
 
             // Graded once, before either consumer sees it. The recording on the

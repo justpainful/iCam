@@ -29,9 +29,14 @@ public sealed partial class CameraPage : Page
     private MediaPlayer? _player;
 
     // The most recent picture, copied off the decoder's thread so drawing never
-    // races with the frame that is being produced.
+    // races with the frame that is being produced. Two buffers, swapped under
+    // the lock: the producer fills one while the interface thread uploads the
+    // other, and neither ever waits for the other's work — only for the swap.
     private readonly Lock _frameLock = new();
     private byte[]? _latestFrame;
+    private byte[]? _drawFrame;
+    private bool _frameDirty;
+    private int _redrawQueued;
     private int _frameWidth;
     private int _frameHeight;
     private CanvasBitmap? _surface;
@@ -157,7 +162,12 @@ public sealed partial class CameraPage : Page
         }
         _player = null;
 
-        lock (_frameLock) _latestFrame = null;
+        lock (_frameLock)
+        {
+            _latestFrame = null;
+            _drawFrame = null;
+            _frameDirty = false;
+        }
         Preview.Invalidate();
     }
 
@@ -184,36 +194,62 @@ public sealed partial class CameraPage : Page
             display.Span[..needed].CopyTo(_latestFrame);
             _frameWidth = width;
             _frameHeight = height;
+            _frameDirty = true;
         }
 
-        DispatcherQueue.TryEnqueue(() => Preview.Invalidate());
+        // One redraw in flight, ever. Asking again while the interface thread
+        // is still behind just builds a queue of stale invalidations for it to
+        // wade through — which the user experiences as the preview running
+        // seconds behind the phone and then lurching to catch up.
+        if (Interlocked.Exchange(ref _redrawQueued, 1) == 0)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                Interlocked.Exchange(ref _redrawQueued, 0);
+                Preview.Invalidate();
+            });
+        }
     }
 
     private void OnPreviewDraw(CanvasControl sender, CanvasDrawEventArgs args)
     {
         int width;
         int height;
+        byte[]? pixels;
+
+        // The lock covers a pointer swap and nothing else. The decoder's
+        // thread only ever waits the nanoseconds the swap takes — never the
+        // milliseconds of a GPU upload, which happen out here on a buffer the
+        // producer no longer owns.
         lock (_frameLock)
         {
             if (_latestFrame is null) return;
             width = _frameWidth;
             height = _frameHeight;
 
-            if (_surface is null || _surface.SizeInPixels.Width != width
-                || _surface.SizeInPixels.Height != height)
+            if (_frameDirty)
             {
-                _surface?.Dispose();
-                _surface = CanvasBitmap.CreateFromBytes(
-                    sender, _latestFrame, width, height,
-                    Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized);
+                (_latestFrame, _drawFrame) = (_drawFrame, _latestFrame);
+                _frameDirty = false;
             }
-            else
-            {
-                // Reusing the bitmap rather than allocating one per frame: at
-                // thirty frames a second the allocations alone would keep the
-                // collector busy for no benefit.
-                _surface.SetPixelBytes(_latestFrame);
-            }
+            pixels = _drawFrame;
+        }
+        if (pixels is null || pixels.Length != width * height * 4) return;
+
+        if (_surface is null || _surface.SizeInPixels.Width != width
+            || _surface.SizeInPixels.Height != height)
+        {
+            _surface?.Dispose();
+            _surface = CanvasBitmap.CreateFromBytes(
+                sender, pixels, width, height,
+                Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized);
+        }
+        else
+        {
+            // Reusing the bitmap rather than allocating one per frame: at
+            // thirty frames a second the allocations alone would keep the
+            // collector busy for no benefit.
+            _surface.SetPixelBytes(pixels);
         }
 
         // Letterboxed rather than stretched. A face is not worth distorting to
