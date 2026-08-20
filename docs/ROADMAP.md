@@ -45,17 +45,27 @@ nothing is drawn in the interface before it works.
 - [ ] iCam Library: photos, videos, sessions, with `On iPhone` / `On PC` filters
 - [ ] Recovery prompt at launch, wired to the interface
 
-### Windows — next
+### Windows — done
 
-- [ ] `iCam.Core`: the C# half of the protocol, against the same vectors
-- [ ] Listener, Bonjour advertisement, pairing UI
-- [ ] WinUI 3 shell: Mica, native title bar, remembered window placement
-- [ ] Live preview through `MediaStreamSource`, hardware decoded
-- [ ] Remote camera control, driving the same `CameraState`
-- [ ] PC-side recording
-- [ ] `iCam Camera`: out-of-process Media Foundation virtual camera, fed by a
-      shared-memory ring so it keeps working with the window closed
-- [ ] `iCam Microphone`
+- [x] `iCam.Core`: the C# half of the protocol, against the same vectors
+- [x] `PeerSession` on a plain `Stream`, so the whole session is testable
+      without a network, WinRT, or a phone
+- [x] Listener, mDNS advertisement through `DnsServiceRegister`, trust store
+- [x] WinUI 3 shell: Mica, native title bar, remembered window placement
+- [x] Live preview through `MediaStreamSource`, hardware decoded
+- [x] AVCC to Annex-B conversion, with `avcC` and `hvcC` parsers
+- [x] Remote camera control, driving the phone's authoritative `CameraState`
+- [x] Pairing dialog with the six digits
+
+### Windows — remaining
+
+- [ ] `iCam Camera`: the out-of-process Media Foundation frame source and its
+      registration. The shared-memory ring and the managed half are in place.
+- [ ] `iCam Microphone`. **Blocked on a code-signing certificate**, not on
+      code: Windows offers no supported user-mode virtual audio device, so this
+      needs an AVStream or APO driver with WHQL attestation signing.
+- [ ] PC-side recording and the library
+- [ ] Tray presence while the window is closed
 - [ ] Signed installer; one-button virtual device setup
 
 ---

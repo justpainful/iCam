@@ -53,25 +53,51 @@ offer exactly that range once the link comes back.
 
 ## What is built
 
-Phase 1 — the vertical slice, end to end.
+Phase 1 — the vertical slice, end to end. Both platforms build green in CI.
 
-- [x] Wire protocol, specified and implemented ([`docs/PROTOCOL.md`](docs/PROTOCOL.md))
-- [x] Secure pairing: P-256 ECDH + ECDSA, AES-256-GCM records, six-digit
-      verification, trust bound to a key rather than to an IP address
+**iPhone**
+
 - [x] Capture engine: real lens enumeration, Lens Lock, exposure, ISO, shutter,
       white balance, Pick White, focus, torch — every range read from the live
       device, never hardcoded
 - [x] Segmented, crash-recoverable master recording
-- [x] Hardware stream encoder, independent of the master, with adaptive bitrate
+- [x] Hardware stream encoder, independent of the master, adaptive bitrate
 - [x] `ThermalManager` and a single `ThermalBudget` every subsystem reads
-- [x] Display Off mode for multi-hour sessions
-- [x] iPhone interface: one screen, three surfaces
-- [ ] Windows application ([`docs/ROADMAP.md`](docs/ROADMAP.md))
-- [ ] `iCam Camera` virtual device
-- [ ] `iCam Microphone`
+- [x] Display Off for multi-hour sessions
+- [x] One camera screen, plus Camera settings and App settings
+
+**Protocol**
+
+- [x] Specified in [`docs/PROTOCOL.md`](docs/PROTOCOL.md), implemented twice
+- [x] Pairing: P-256 ECDH and ECDSA, AES-256-GCM records, six-digit
+      verification, trust bound to a key rather than to an address
+- [x] Conformance vectors both test suites read, so the two halves provably
+      agree byte for byte
+
+**Windows**
+
+- [x] Native WinUI 3: Mica, custom title bar with the real system buttons,
+      remembered window placement
+- [x] Listener, mDNS advertisement, pairing, trust store
+- [x] Live preview through `MediaStreamSource`, hardware decoded
+- [x] Remote camera control against the phone's authoritative state
+- [ ] `iCam Camera` virtual device — architecture in place, registration pending
+- [ ] `iCam Microphone` — needs a signed driver; see the note below
+- [ ] PC-side recording and library
 
 Nothing in the tree pretends to work when it does not. A control that is not
 implemented is not drawn.
+
+### One honest limitation
+
+**`iCam Microphone` needs a signed kernel driver.** Windows has no supported
+user-mode virtual audio device: it requires an AVStream or APO driver with WHQL
+attestation signing, which needs a code-signing certificate. The audio path,
+the protocol and the processing chain are all built; only the device
+registration is blocked, and on a certificate rather than on code.
+
+`iCam Camera`, the video half, has a supported user-mode path through
+`MFCreateVirtualCamera` and needs no such certificate.
 
 ## The iPhone interface
 
