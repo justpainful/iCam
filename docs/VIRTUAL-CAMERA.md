@@ -101,22 +101,47 @@ shows a black rectangle, a spinner, or an error, and the user has no idea
 whether the fault is iCam, Windows, or Discord. A frame that says what is
 happening costs almost nothing and answers the question.
 
+## What the registered class actually is
+
+This is the part no amount of reading the documentation makes obvious, and
+getting it wrong fails **silently**: `MFCreateVirtualCamera` returns `S_OK`
+and the camera simply never appears.
+
+The CLSID is **not** the media source. Windows creates the class and
+immediately asks it for `IMFActivate`. The registered object is an
+*activator*; the media source is what its `ActivateObject` hands back.
+
+Two more that fail the same quiet way:
+
+- **Every interface Windows asks for has to be answered, including base
+  interfaces.** WRL only responds for the interfaces named in the class list,
+  so `IMFMediaSourceEx` deriving from `IMFMediaSource` is not enough — the
+  pipeline asks for the base interface too. `ChainInterfaces` is what makes
+  them resolve to the same object.
+- **A live source timestamps against the pipeline's presentation clock.**
+  Numbering frames from zero hands the pipeline samples that are hours old.
+  Every one is discarded as too late, and the symptom is a camera that
+  accepts thousands of sample requests a second and delivers nothing.
+
 ## Registration
 
-The DLL is a standard in-process COM server under a fixed CLSID. Registration
-writes:
+The DLL is a standard in-process COM server under a fixed CLSID:
 
 ```
-HKCU\Software\Classes\CLSID\{CLSID}\InprocServer32
-    (Default)      = full path to iCam.VirtualCamera.dll
+HKLM\SOFTWARE\Classes\CLSID\{6EA042AA-06DB-4533-BADC-ADDF389ED998}\InprocServer32
+    (Default)      = %ProgramData%\iCam\VirtualCamera\iCam.VirtualCamera.dll
     ThreadingModel = Both
 ```
 
-Per-user, under `HKCU` — so **enabling `iCam Camera` never needs
-administrator rights**. `MFCreateVirtualCamera` is then called with
-`MFVirtualCameraLifetime_System` so the registration survives until it is
-explicitly removed, and `MFVirtualCameraAccess_CurrentUser`, which matches
-where the class is registered.
+**Machine-wide, and therefore administrator once.** A per-user registration
+under `HKCU` does not work, and it is worth being precise about why: the Frame
+Server runs as a service, in its own account, and cannot see the current
+user's registry hive. `MFCreateVirtualCamera` still succeeds — it is
+`IMFVirtualCamera::Start` that fails, with `ERROR_PATH_NOT_FOUND`.
 
-Removal deletes the registration and the key. Nothing is left behind, and
-nothing needed elevation in either direction.
+The DLL also has to live somewhere a service can read, which a user profile is
+not. It is installed to `%ProgramData%\iCam\VirtualCamera`.
+
+`register.ps1` does both and `register.ps1 -Remove` undoes both, leaving
+nothing behind. This is the same one-time elevation OBS Virtual Camera and
+every other Windows virtual camera asks for.
