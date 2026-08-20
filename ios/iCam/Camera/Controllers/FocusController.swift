@@ -35,7 +35,7 @@ struct FocusController {
         guard device.isLockingFocusWithCustomLensPositionSupported else { return nil }
         let clamped = position.clamped(to: 0 ... 1)
         return DeviceLock.with(device) { d -> Double in
-            d.setFocusModeLockedWithLensPosition(Float(clamped), completionHandler: nil)
+            d.setFocusModeLocked(lensPosition: Float(clamped), completionHandler: nil)
             return clamped
         }
     }
