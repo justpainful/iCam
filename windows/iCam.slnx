@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="../tools/ProtocolVectors/ProtocolVectors.csproj" />
+  <Project Path="iCam.Core.Tests/iCam.Core.Tests.csproj" />
+  <Project Path="iCam.Core/iCam.Core.csproj" />
+</Solution>

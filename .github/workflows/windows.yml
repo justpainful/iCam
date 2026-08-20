@@ -1,0 +1,74 @@
+name: Windows
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "windows/**"
+      - "tools/ProtocolVectors/**"
+      - "protocol/**"
+      - ".github/workflows/windows.yml"
+  pull_request:
+    paths:
+      - "windows/**"
+      - "tools/ProtocolVectors/**"
+      - "protocol/**"
+      - ".github/workflows/windows.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+
+jobs:
+  core:
+    name: Core and protocol tests
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore
+        working-directory: windows
+        run: dotnet restore iCam.sln
+
+      - name: Build
+        working-directory: windows
+        run: dotnet build iCam.sln --configuration Release --no-restore
+
+      - name: Test
+        working-directory: windows
+        run: >
+          dotnet test iCam.sln
+          --configuration Release
+          --no-build
+          --logger "trx;LogFileName=results.trx"
+          --results-directory TestResults
+
+      - name: The committed conformance vectors are current
+        run: |
+          # Regenerating must be a no-op. A diff here means the wire format
+          # changed without the vectors -- and therefore without the iOS tests
+          # that read the same file -- being updated in the same commit.
+          dotnet run --project tools/ProtocolVectors --configuration Release
+          git diff --exit-code -- protocol/vectors
+        shell: bash
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-results
+          path: windows/TestResults
+          if-no-files-found: ignore
+          retention-days: 7
