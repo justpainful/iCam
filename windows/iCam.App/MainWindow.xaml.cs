@@ -177,14 +177,29 @@ public sealed partial class MainWindow : Window
         PairingDialog.XamlRoot = RootGrid.XamlRoot;
         PairingDialog.Content = new PairingContent(device.Name, digits);
 
-        var result = await PairingDialog.ShowAsync();
-        if (result == ContentDialogResult.Primary)
+        // If the iPhone goes away while the digits are on screen — it was put
+        // down, the app was closed, the network dropped — the dialog has to go
+        // with it. Otherwise the user is left comparing a code against a device
+        // that is no longer there, and the only way out is to guess.
+        void CloseIfPeerLeft(string? reason) =>
+            DispatcherQueue.TryEnqueue(() => PairingDialog.Hide());
+
+        device.Session.Closed += CloseIfPeerLeft;
+        try
         {
-            await device.Session.ConfirmPairingAsync();
+            var result = await PairingDialog.ShowAsync();
+            if (result == ContentDialogResult.Primary)
+            {
+                await device.Session.ConfirmPairingAsync();
+            }
+            else
+            {
+                device.Session.RejectPairing();
+            }
         }
-        else
+        finally
         {
-            device.Session.RejectPairing();
+            device.Session.Closed -= CloseIfPeerLeft;
         }
     }
 }
