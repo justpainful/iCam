@@ -44,7 +44,8 @@ enum CaptureTarget: String, Codable, Sendable, CaseIterable {
 enum WhiteBalancePreset: String, Codable, Sendable, CaseIterable {
     case auto, daylight, cloudy, shade, tungsten, fluorescent, warm, custom
 
-    var temperature: Float? {
+    /// Kelvin, or `nil` for the two presets that are not a fixed temperature.
+    var temperature: Double? {
         switch self {
         case .auto, .custom: return nil
         case .daylight:      return 5600

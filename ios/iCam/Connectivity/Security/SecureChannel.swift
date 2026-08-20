@@ -11,11 +11,21 @@ struct SessionKeys: Sendable, Equatable {
     var pairingDigits: String
 
     static func derive(sharedSecret: SharedSecret, clientRandom: Data, serverRandom: Data) -> SessionKeys {
+        // CryptoKit's `SharedSecret` hashes nothing on its own, and .NET's
+        // `DeriveRawSecretAgreement` returns the same raw X coordinate — which
+        // is why both sides can reach an identical key schedule.
+        let raw = sharedSecret.withUnsafeBytes { Data($0) }
+        return derive(sharedSecretBytes: raw, clientRandom: clientRandom, serverRandom: serverRandom)
+    }
+
+    /// The same schedule, from raw bytes. Separated so the conformance vectors
+    /// can pin it down without performing a key agreement.
+    static func derive(sharedSecretBytes: Data, clientRandom: Data, serverRandom: Data) -> SessionKeys {
         var salt = Data()
         salt.append(clientRandom)
         salt.append(serverRandom)
 
-        let ikm = sharedSecret.withUnsafeBytes { SymmetricKey(data: Data($0)) }
+        let ikm = SymmetricKey(data: sharedSecretBytes)
         let prk = HKDF<SHA256>.extract(inputKeyMaterial: ikm, salt: salt)
 
         func expand(_ info: String, _ count: Int) -> Data {

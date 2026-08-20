@@ -68,6 +68,11 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: iCamTests
+      # The conformance vectors are the shared source of truth for both
+      # implementations, so the Swift tests read the very same file the C#
+      # tests do rather than a copy that could drift.
+      - path: ../protocol/vectors
+        buildPhase: resources
     dependencies:
       - target: iCam
     settings:

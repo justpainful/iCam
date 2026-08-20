@@ -143,9 +143,9 @@ final class CameraEngine: NSObject {
                 self.session.addOutput(self.videoOutput)
             }
 
-            // Ask the output for exactly the format the wire wants, so the
-            // audio path never runs a conversion of its own.
-            self.audioOutput.audioSettings = AudioStreamer.outputSettings
+            // `audioSettings` is macOS-only, so on iOS the output delivers
+            // whatever the session negotiated. `AudioStreamer` reads the real
+            // format off each buffer instead of assuming one.
             self.audioOutput.setSampleBufferDelegate(self, queue: self.audioQueue)
             if self.session.canAddOutput(self.audioOutput) {
                 self.session.addOutput(self.audioOutput)
