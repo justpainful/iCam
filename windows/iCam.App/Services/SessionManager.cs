@@ -37,6 +37,22 @@ public sealed partial class ConnectedDevice : System.ComponentModel.INotifyPrope
     private StreamProfile _streamProfile = StreamProfile.Webcam1080p30;
     private bool _isStreaming;
 
+    /// <summary>
+    /// The geometry the video thread works in.
+    ///
+    /// The same value as <see cref="StreamProfile"/>, kept separately because
+    /// the two are read from different threads and only one of them can afford
+    /// to wait. The property is written on the dispatcher so the interface can
+    /// bind to it; this field is written on the network read loop, before
+    /// anything is told that the format changed, so the parameter sets for a
+    /// new resolution cannot arrive while it still holds the old one.
+    ///
+    /// A whole profile rather than two integers: the record is immutable and
+    /// the reference publishes atomically, so a reader can never pair a new
+    /// width with a stale height.
+    /// </summary>
+    private volatile StreamProfile _videoFormat = StreamProfile.Webcam1080p30;
+
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 
     public ConnectedDevice(PeerSession session, DispatcherQueue dispatcher)
@@ -104,6 +120,9 @@ public sealed partial class ConnectedDevice : System.ComponentModel.INotifyPrope
 
     public async Task StartStreamingAsync(StreamProfile profile)
     {
+        // Before the request goes out, not after: the phone can have frames on
+        // the wire before this await returns.
+        _videoFormat = profile;
         await Session.StartStreamAsync(profile);
         Post(() =>
         {
@@ -150,6 +169,11 @@ public sealed partial class ConnectedDevice : System.ComponentModel.INotifyPrope
             case ControlType.StreamStatus:
                 var status = ControlCodec.Payload<StreamStatusPayload>(envelope);
                 if (status is null) break;
+                // Not posted, for the same reason as the camera state above:
+                // this arrives on the read loop that also carries the video,
+                // so writing it here puts the new geometry in place before the
+                // first frame that uses it can possibly be handled.
+                _videoFormat = status.Actual;
                 Post(() =>
                 {
                     StreamProfile = status.Actual;
@@ -168,8 +192,14 @@ public sealed partial class ConnectedDevice : System.ComponentModel.INotifyPrope
     {
         if (header.IsParameterSets)
         {
+            // The field, never the property: the property is a step behind
+            // whenever the resolution has just changed, and handing the
+            // pipeline the previous size would have it build a source that
+            // declares the wrong format and then — correctly — rebuild when
+            // the truth arrives, resetting the preview in front of the user.
+            var format = _videoFormat;
             Video.SetConfiguration(header.Codec, body.Span,
-                                   (uint)StreamProfile.Width, (uint)StreamProfile.Height);
+                                   (uint)format.Width, (uint)format.Height);
             return;
         }
         Video.Enqueue(header, body);
