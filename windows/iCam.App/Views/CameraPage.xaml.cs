@@ -100,7 +100,7 @@ public sealed partial class CameraPage : Page
         // The same player feeds iCam Camera. One decode serves the window and
         // the virtual camera both; decoding twice would double the cost of the
         // only genuinely expensive step in the pipeline.
-        Services.VirtualCamera.SetSource(_player);
+        Services.VirtualCamera.SetSource(_player, device.Image);
 
         EmptyState.Visibility = Visibility.Collapsed;
         Inspector.IsEnabled = true;

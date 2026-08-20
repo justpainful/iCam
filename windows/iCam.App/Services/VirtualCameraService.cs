@@ -67,11 +67,18 @@ public sealed class VirtualCameraService : IAsyncDisposable
     }
 
     /// <summary>
-    /// Points the camera at a decoded stream. <c>null</c> detaches, and the
+    /// Points the camera at a decoded stream, with the image controls that
+    /// belong to the iPhone it is coming from. <c>null</c> detaches, and the
     /// DLL falls back to its holding card — which is why losing the iPhone
     /// does not remove the camera from a call in progress.
     /// </summary>
-    public void SetSource(MediaPlayer? player) => _feed.Attach(player);
+    public void SetSource(MediaPlayer? player, ICam.Core.Media.ImageAdjuster? image = null)
+    {
+        // Set before attaching, so the very first frame out is already graded
+        // rather than one frame of the raw picture slipping through.
+        _feed.Image = image;
+        _feed.Attach(player);
+    }
 
     public async ValueTask DisposeAsync()
     {

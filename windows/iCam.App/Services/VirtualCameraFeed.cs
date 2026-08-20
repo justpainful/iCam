@@ -46,6 +46,7 @@ public sealed class VirtualCameraFeed : IDisposable
     {
         _pipe = pipe;
         _pipe.FormatRequested += OnFormatRequested;
+        _pipe.ConnectionChanged += _ => ApplyFrameServerMode();
     }
 
     /// <summary>
@@ -62,15 +63,46 @@ public sealed class VirtualCameraFeed : IDisposable
                 _player.VideoFrameAvailable -= OnVideoFrameAvailable;
                 _player.IsVideoFrameServerEnabled = false;
             }
-
             _player = player;
+        }
+        ApplyFrameServerMode();
+    }
+
+    /// <summary>
+    /// Turns frame-server mode on only while something is actually consuming
+    /// iCam Camera.
+    ///
+    /// This is deliberately conservative. In frame-server mode the player hands
+    /// each decoded frame to the application instead of presenting it, and
+    /// whether <c>MediaPlayerElement</c> keeps drawing alongside that is not
+    /// something this codebase has verified on a real stream. Leaving the mode
+    /// off until a consumer connects means the preview is untouched in the
+    /// ordinary case, and only the case that is being actively watched — where
+    /// a blank preview would be noticed immediately — can be affected.
+    ///
+    /// The proper fix is for the window to draw the frames it already has,
+    /// which also makes the image adjustments visible in the preview. Until
+    /// then this keeps the blast radius small.
+    /// </summary>
+    private void ApplyFrameServerMode()
+    {
+        lock (_lock)
+        {
             if (_player is null) return;
 
-            // Frame-server mode hands us each decoded frame instead of drawing
-            // it. The MediaPlayerElement still renders, because it draws from
-            // the same player.
-            _player.IsVideoFrameServerEnabled = true;
-            _player.VideoFrameAvailable += OnVideoFrameAvailable;
+            var wanted = _pipe.IsConnected;
+            if (_player.IsVideoFrameServerEnabled == wanted) return;
+
+            if (wanted)
+            {
+                _player.VideoFrameAvailable += OnVideoFrameAvailable;
+                _player.IsVideoFrameServerEnabled = true;
+            }
+            else
+            {
+                _player.IsVideoFrameServerEnabled = false;
+                _player.VideoFrameAvailable -= OnVideoFrameAvailable;
+            }
         }
     }
 
