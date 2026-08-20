@@ -121,7 +121,11 @@ public sealed partial class CameraPage : Page
         _device = null;
 
         Preview.SetMediaPlayer(null);
-        _player?.Dispose();
+        if (_player is not null)
+        {
+            (_player.Source as MediaSource)?.Dispose();
+            _player.Dispose();
+        }
         _player = null;
     }
 
@@ -142,7 +146,12 @@ public sealed partial class CameraPage : Page
         DispatcherQueue.TryEnqueue(() =>
         {
             if (_player is null) return;
+
+            // Re-pointing the player does not release what it was playing, and
+            // what it was playing holds a decoder.
+            var previous = _player.Source as MediaSource;
             _player.Source = MediaSource.CreateFromMediaStreamSource(source);
+            previous?.Dispose();
             _player.Play();
         });
     }

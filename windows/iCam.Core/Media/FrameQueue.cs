@@ -23,19 +23,30 @@ public readonly record struct QueuedFrame(byte[] Data, ulong PtsUs, bool IsKeyfr
 public sealed class FrameQueue
 {
     private readonly Channel<QueuedFrame> _channel;
+    private long _accepted;
+    private long _dropped;
 
     public FrameQueue(int capacity = 3)
     {
-        _channel = Channel.CreateBounded<QueuedFrame>(new BoundedChannelOptions(capacity)
-        {
-            FullMode = BoundedChannelFullMode.DropOldest,
-            SingleReader = true,
-            SingleWriter = false,
-        });
+        Capacity = capacity;
+        _channel = Channel.CreateBounded<QueuedFrame>(
+            new BoundedChannelOptions(capacity)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = true,
+                SingleWriter = false,
+            },
+            // `DropOldest` reports success even when it evicted something, so
+            // the channel is the only party that knows a frame was lost. Asking
+            // it beats inferring it from the counts, which goes wrong the moment
+            // a reader is draining at the same time.
+            _ => Interlocked.Increment(ref _dropped));
     }
 
-    public ulong Dropped { get; private set; }
-    public ulong Accepted { get; private set; }
+    public int Capacity { get; }
+
+    public ulong Accepted => (ulong)Interlocked.Read(ref _accepted);
+    public ulong Dropped => (ulong)Interlocked.Read(ref _dropped);
 
     /// <summary>
     /// Adds a frame, discarding the oldest if the decoder is behind. Never
@@ -43,21 +54,12 @@ public sealed class FrameQueue
     /// </summary>
     public void Enqueue(QueuedFrame frame)
     {
-        if (_channel.Writer.TryWrite(frame))
-        {
-            Accepted++;
-            // `DropOldest` reports success even when it evicted something, so
-            // an eviction is inferred rather than reported.
-            if (Accepted - Dropped > (ulong)Capacity) Dropped++;
-            return;
-        }
-        Dropped++;
+        if (_channel.Writer.TryWrite(frame)) Interlocked.Increment(ref _accepted);
+        else Interlocked.Increment(ref _dropped);
     }
 
-    public int Capacity { get; } = 3;
-
     /// <summary>
-    /// Waits for the next frame. Returns <c>false</c> only when the queue has
+    /// Waits for the next frame. Returns <c>null</c> only when the queue has
     /// been completed or the wait was cancelled — never merely because nothing
     /// has arrived yet.
     /// </summary>

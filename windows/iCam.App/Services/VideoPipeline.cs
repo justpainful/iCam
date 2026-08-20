@@ -1,10 +1,9 @@
-using System.Collections.Concurrent;
 using ICam.Core.Media;
 using ICam.Core.Protocol;
+using Windows.Foundation;
 using Windows.Media.Core;
 using Windows.Media.MediaProperties;
 using Windows.Security.Cryptography;
-using Windows.Storage.Streams;
 
 namespace ICam.App.Services;
 
@@ -25,21 +24,24 @@ public sealed class VideoPipeline : IDisposable
     /// <summary>At 30 fps this is a tenth of a second of slack, and no more.</summary>
     private const int MaxQueuedFrames = 3;
 
-    private readonly ConcurrentQueue<(byte[] Data, ulong PtsUs, bool IsKeyframe)> _queue = new();
-    private readonly SemaphoreSlim _available = new(0);
+    private readonly FrameQueue _frames = new(MaxQueuedFrames);
     private readonly Lock _lock = new();
 
     private MediaStreamSource? _source;
     private VideoStreamDescriptor? _descriptor;
+    private CancellationTokenSource? _sourceLifetime;
+    private TypedEventHandler<MediaStreamSource,
+        MediaStreamSourceSampleRequestedEventArgs>? _sampleRequested;
     private BitstreamConverter.CodecConfiguration? _configuration;
     private VideoCodec _codec = VideoCodec.H264;
     private uint _width;
     private uint _height;
     private ulong _firstPtsUs;
     private bool _hasFirstPts;
+    private bool _awaitingKeyframe = true;
 
     public ulong FramesRendered { get; private set; }
-    public ulong FramesDropped { get; private set; }
+    public ulong FramesDropped => _frames.Dropped;
     public bool IsReady => _source is not null;
 
     /// <summary>Raised when a new source is built and the player must be re-pointed.</summary>
@@ -62,6 +64,10 @@ public sealed class VideoPipeline : IDisposable
 
         lock (_lock)
         {
+            // The phone resends this before every IDR, so the common case is a
+            // record identical to the one already in force. Rebuilding on it
+            // would reset the player and throw away the picture several times a
+            // minute, which is why only a real format change gets that far.
             var unchanged = _configuration is not null
                 && _codec == codec
                 && _width == width
@@ -75,7 +81,8 @@ public sealed class VideoPipeline : IDisposable
             _width = width;
             _height = height;
             _hasFirstPts = false;
-            while (_queue.TryDequeue(out _)) { }
+            _awaitingKeyframe = true;
+            _frames.Clear();
         }
 
         BuildSource();
@@ -84,32 +91,39 @@ public sealed class VideoPipeline : IDisposable
     /// <summary>Queues one access unit. Called from the network thread.</summary>
     public void Enqueue(VideoFrameHeader header, ReadOnlyMemory<byte> avcc)
     {
-        BitstreamConverter.CodecConfiguration? configuration;
-        lock (_lock) configuration = _configuration;
-        if (configuration is null) return;
-
-        // Before the first keyframe there is nothing a decoder can start from,
-        // and feeding it inter frames only produces a smear.
-        if (!_hasFirstPts && !header.IsKeyframe) return;
+        BitstreamConverter.CodecConfiguration configuration;
+        lock (_lock)
+        {
+            // Before the first keyframe there is nothing a decoder can start
+            // from, and feeding it inter frames only produces a smear.
+            if (_configuration is null || (_awaitingKeyframe && !header.IsKeyframe)) return;
+            configuration = _configuration;
+            if (header.IsKeyframe) _awaitingKeyframe = false;
+        }
 
         var annexB = BitstreamConverter.AvccToAnnexB(avcc.Span, configuration.NalLengthSize);
         if (annexB.Length == 0) return;
 
-        while (_queue.Count >= MaxQueuedFrames && _queue.TryDequeue(out _))
+        if (header.IsKeyframe)
         {
-            FramesDropped++;
+            // The parameter sets already went out through SetFormatUserData,
+            // and Media Foundation's H.264 decoder is markedly happier when it
+            // finds them in the bitstream as well — particularly when it starts
+            // mid-stream. Twice a second, a few dozen bytes: cheaper than the
+            // black picture it prevents.
+            annexB = [.. configuration.AnnexBParameterSets, .. annexB];
         }
 
-        _queue.Enqueue((annexB, header.PtsUs, header.IsKeyframe));
-        _available.Release();
+        _frames.Enqueue(new QueuedFrame(annexB, header.PtsUs, header.IsKeyframe));
     }
 
     public void Reset()
     {
         lock (_lock)
         {
-            while (_queue.TryDequeue(out _)) { }
+            _frames.Clear();
             _hasFirstPts = false;
+            _awaitingKeyframe = true;
             _configuration = null;
         }
     }
@@ -137,6 +151,9 @@ public sealed class VideoPipeline : IDisposable
             properties.SetFormatUserData(_configuration.AnnexBParameterSets);
         }
 
+        var lifetime = new CancellationTokenSource();
+        var token = lifetime.Token;
+
         var descriptor = new VideoStreamDescriptor(properties);
         var source = new MediaStreamSource(descriptor)
         {
@@ -146,20 +163,36 @@ public sealed class VideoPipeline : IDisposable
             CanSeek = false,
         };
 
+        // Each source carries its own cancellation, so that a request still
+        // waiting on the source being replaced can be released without
+        // touching the one taking over.
+        TypedEventHandler<MediaStreamSource, MediaStreamSourceSampleRequestedEventArgs>
+            sampleRequested = (_, args) => OnSampleRequested(args, token);
+
         source.Starting += OnStarting;
-        source.SampleRequested += OnSampleRequested;
+        source.SampleRequested += sampleRequested;
         source.Closed += OnClosed;
 
         var previous = _source;
+        var previousHandler = _sampleRequested;
+        var previousLifetime = _sourceLifetime;
+
         _source = source;
         _descriptor = descriptor;
+        _sampleRequested = sampleRequested;
+        _sourceLifetime = lifetime;
 
         if (previous is not null)
         {
             previous.Starting -= OnStarting;
-            previous.SampleRequested -= OnSampleRequested;
+            if (previousHandler is not null) previous.SampleRequested -= previousHandler;
             previous.Closed -= OnClosed;
         }
+
+        // Whatever the old source was waiting for, it is not going to render
+        // it. Releasing it here stops it taking the new source's first frame.
+        previousLifetime?.Cancel();
+        previousLifetime?.Dispose();
 
         Log.Media.Info($"Decoder ready: {_codec} {_width}x{_height}");
         SourceChanged?.Invoke(source);
@@ -171,31 +204,33 @@ public sealed class VideoPipeline : IDisposable
         args.Request.SetActualStartPosition(TimeSpan.Zero);
     }
 
-    private async void OnSampleRequested(MediaStreamSource sender,
-                                         MediaStreamSourceSampleRequestedEventArgs args)
+    private async void OnSampleRequested(MediaStreamSourceSampleRequestedEventArgs args,
+                                         CancellationToken token)
     {
         var deferral = args.Request.GetDeferral();
         try
         {
-            // Waiting rather than returning an empty request: an empty one ends
-            // the stream, and a camera that pauses for half a second must not
-            // look like a camera that stopped.
-            if (!await _available.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(true))
-            {
-                return;
-            }
-            if (!_queue.TryDequeue(out var frame)) return;
+            // Leaving `Sample` unset does not mean "nothing this time", it means
+            // end of stream: Media Foundation tears the stream down and never
+            // asks again. So this waits for as long as the phone takes, and the
+            // wait only ends empty when this source is being replaced or the
+            // pipeline is closing — both of which really are the end of it.
+            if (await _frames.DequeueAsync(token).ConfigureAwait(true) is not { } frame) return;
 
-            if (!_hasFirstPts)
+            ulong offsetUs;
+            lock (_lock)
             {
-                // Timestamps are relative to the first frame we actually show,
-                // so a session that starts hours into the phone's uptime does
-                // not begin with a huge presentation time.
-                _firstPtsUs = frame.PtsUs;
-                _hasFirstPts = true;
+                if (!_hasFirstPts)
+                {
+                    // Timestamps are relative to the first frame we actually
+                    // show, so a session that starts hours into the phone's
+                    // uptime does not begin with a huge presentation time.
+                    _firstPtsUs = frame.PtsUs;
+                    _hasFirstPts = true;
+                }
+                offsetUs = frame.PtsUs >= _firstPtsUs ? frame.PtsUs - _firstPtsUs : 0;
             }
 
-            var offsetUs = frame.PtsUs >= _firstPtsUs ? frame.PtsUs - _firstPtsUs : 0;
             // `AsBuffer` is a .NET Framework era extension that modern .NET
             // does not carry; this is the projected equivalent.
             var buffer = CryptographicBuffer.CreateFromByteArray(frame.Data);
@@ -225,8 +260,12 @@ public sealed class VideoPipeline : IDisposable
     public void Dispose()
     {
         Reset();
-        _available.Dispose();
+        _frames.Complete();
+        _sourceLifetime?.Cancel();
+        _sourceLifetime?.Dispose();
+        _sourceLifetime = null;
         _source = null;
         _descriptor = null;
+        _sampleRequested = null;
     }
 }
