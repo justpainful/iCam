@@ -143,17 +143,23 @@ final class StreamEncoder {
         let codecType: CMVideoCodecType = profile.codec == .hevc ? kCMVideoCodecType_HEVC
                                                                  : kCMVideoCodecType_H264
         var newSession: VTCompressionSession?
-        let encoderSpec: [CFString: Any] = [
-            kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: true,
-            kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: true
-        ]
+
+        // Refusing a software fallback matters: a CPU encoder would cook the
+        // phone and still miss the frame rate. The keys that say so only exist
+        // from iOS 17.4; before that, iOS already picks the hardware encoder
+        // for these codecs on every device iCam supports.
+        var encoderSpec: [CFString: Any] = [:]
+        if #available(iOS 17.4, *) {
+            encoderSpec[kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder] = true
+            encoderSpec[kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder] = true
+        }
 
         let status = VTCompressionSessionCreate(
             allocator: kCFAllocatorDefault,
             width: Int32(profile.width),
             height: Int32(profile.height),
             codecType: codecType,
-            encoderSpecification: encoderSpec as CFDictionary,
+            encoderSpecification: encoderSpec.isEmpty ? nil : encoderSpec as CFDictionary,
             imageBufferAttributes: nil,
             compressedDataAllocator: nil,
             outputCallback: nil,

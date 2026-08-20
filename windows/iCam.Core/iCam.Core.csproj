@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Plain .NET, no Windows-only surface. The protocol half of iCam is the
+         part that must stay testable without a desktop, a GPU, or a phone. -->
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>ICam.Core</RootNamespace>
+    <AssemblyName>iCam.Core</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

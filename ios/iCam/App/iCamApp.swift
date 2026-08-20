@@ -45,10 +45,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             // or their conferencing app the moment iCam opens is a bad
             // neighbour. `.videoRecording` mode gets the microphone processing
             // Apple tunes for camera capture.
+            //
+            // Bluetooth input is deliberately not requested. Routing the mic
+            // over HFP drops the whole session to narrowband and makes the
+            // audio audibly worse than the built-in microphone — which is not a
+            // trade a webcam should make silently.
             try session.setCategory(.playAndRecord,
                                     mode: .videoRecording,
-                                    options: [.mixWithOthers, .allowBluetooth,
-                                              .defaultToSpeaker])
+                                    options: [.mixWithOthers, .defaultToSpeaker])
             try session.setActive(true, options: [])
         } catch {
             Log.app.error("Could not configure the audio session: \(String(describing: error))")
