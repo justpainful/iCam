@@ -105,6 +105,13 @@ public sealed partial class CameraPage : Page
             AutoPlay = true,
             IsLoopingEnabled = false,
         };
+        // A decoder that cannot handle the stream fails here and nowhere
+        // else. Without this line that failure is a black rectangle with no
+        // explanation anywhere, which is the worst state a camera app can be
+        // in — wrong and silent about it.
+        _player.MediaFailed += (_, failed) =>
+            Log.Media.Error($"Decode failed: {failed.Error} 0x{failed.ExtendedErrorCode?.HResult:X8} " +
+                            failed.ErrorMessage);
         // One decode serves the window and iCam Camera both, and the grading
         // happens once, before either sees the frame. So the preview is not an
         // approximation of what is being sent — it is the same buffer.
@@ -232,6 +239,7 @@ public sealed partial class CameraPage : Page
         RecordButton.IsEnabled = false;
         StreamToggle.IsEnabled = false;
         RecordingChip.Visibility = Visibility.Collapsed;
+        _recordingTimer.Stop();
     }
 
     private void OnVideoSourceChanged(MediaStreamSource source)
@@ -269,6 +277,9 @@ public sealed partial class CameraPage : Page
                 case nameof(ConnectedDevice.IsStreaming):
                     ApplyHeader();
                     break;
+                case nameof(ConnectedDevice.Recording):
+                    ApplyRecording();
+                    break;
             }
         });
     }
@@ -279,6 +290,31 @@ public sealed partial class CameraPage : Page
         ApplyState();
         ApplyTelemetry();
         ApplyHeader();
+        ApplyRecording();
+    }
+
+    /// <summary>
+    /// The chip, the button and the timer all follow what the phone said —
+    /// never what was clicked here. A recording started on the phone shows up
+    /// on this screen, and a click that failed to start one does not.
+    /// </summary>
+    private void ApplyRecording()
+    {
+        var recording = _device?.Recording is { Recording: true };
+
+        RecordLabel.Text = recording ? "Stop" : "Record";
+        RecordGlyph.Width = RecordGlyph.Height = recording ? 9 : 10;
+        RecordingChip.Visibility = recording ? Visibility.Visible : Visibility.Collapsed;
+
+        if (recording)
+        {
+            UpdateRecordingReadout();
+            _recordingTimer.Start();
+        }
+        else
+        {
+            _recordingTimer.Stop();
+        }
     }
 
     // MARK: - Rendering state
@@ -454,8 +490,11 @@ public sealed partial class CameraPage : Page
 
     private void UpdateRecordingReadout()
     {
-        // Filled in when the recording state message lands; the timer keeps the
-        // seconds moving between messages so the readout does not tick in jumps.
+        if (_device is null) return;
+        var seconds = (long)(_device.RecordingElapsedUs / 1_000_000);
+        RecordingElapsed.Text = seconds >= 3600
+            ? $"{seconds / 3600}:{seconds / 60 % 60:D2}:{seconds % 60:D2}"
+            : $"{seconds / 60:D2}:{seconds % 60:D2}";
     }
 
     // MARK: - Actions
@@ -471,8 +510,15 @@ public sealed partial class CameraPage : Page
     {
         if (_device is null) return;
 
-        var starting = RecordLabel.Text == "Record";
-        if (starting)
+        // Only the request goes out from here. The chip, the label and the
+        // timer wait for the phone's answer, because the phone is the machine
+        // with the storage, the sensor and the right to say no.
+        if (_device.Recording is { Recording: true } current)
+        {
+            await _device.Session.SendControlAsync(ControlType.RecordStop,
+                new RecordStopPayload { SessionId = current.SessionId ?? "" });
+        }
+        else
         {
             await _device.Session.SendControlAsync(ControlType.RecordStart,
                 new RecordStartPayload
@@ -481,19 +527,6 @@ public sealed partial class CameraPage : Page
                     SessionId = DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss"),
                     StartedAtUs = MonotonicClock.NowUs(),
                 });
-            RecordLabel.Text = "Stop";
-            RecordGlyph.Width = RecordGlyph.Height = 9;
-            RecordingChip.Visibility = Visibility.Visible;
-            _recordingTimer.Start();
-        }
-        else
-        {
-            await _device.Session.SendControlAsync(ControlType.RecordStop,
-                new RecordStopPayload());
-            RecordLabel.Text = "Record";
-            RecordGlyph.Width = RecordGlyph.Height = 10;
-            RecordingChip.Visibility = Visibility.Collapsed;
-            _recordingTimer.Stop();
         }
     }
 

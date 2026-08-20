@@ -18,6 +18,14 @@ public partial class App : Application
 
     private MainWindow? _window;
 
+    /// <summary>
+    /// Held for the life of the process. There is exactly one iCam per
+    /// session, because there is exactly one <c>iCam Camera</c> and one pipe
+    /// to it — a second instance spent its life failing to create that pipe
+    /// twice a second and filling the log with access-denied noise.
+    /// </summary>
+    private static readonly Mutex SingleInstance = new(false, @"Local\iCam.SingleInstance");
+
     public App()
     {
         InitializeComponent();
@@ -34,6 +42,15 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        if (!SingleInstance.WaitOne(TimeSpan.Zero, false))
+        {
+            // Another iCam is already running and owns the camera. Bring its
+            // window forward rather than starting a rival.
+            NativeWindow.ActivateExisting("iCam");
+            Environment.Exit(0);
+            return;
+        }
+
         Services = new AppServices();
         _window = new MainWindow();
         _window.Activate();

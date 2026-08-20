@@ -56,6 +56,7 @@ final class CameraViewModel: ObservableObject {
     private var idleTimer: Timer?
     private var adaptiveTimer: Timer?
     private var telemetryTimer: Timer?
+    private var recordingTimer: Timer?
     private var lastTelemetry: TelemetryPayload?
     private var nextPhotoRequestId: UInt32 = 1
 
@@ -92,12 +93,18 @@ final class CameraViewModel: ObservableObject {
         engine.addAudioSink(audio)
         UIApplication.shared.isIdleTimerDisabled = settings.keepScreenAwake
         scheduleIdleHide()
+        // Timers do not fire in the background, so a recording that survived a
+        // trip there comes back with its ticker stopped. Restarted here rather
+        // than trusted to still exist.
+        syncRecordingTicker()
     }
 
     func onDisappear() {
         idleTimer?.invalidate()
         adaptiveTimer?.invalidate()
         telemetryTimer?.invalidate()
+        recordingTimer?.invalidate()
+        recordingTimer = nil
         UIApplication.shared.isIdleTimerDisabled = false
     }
 
@@ -274,7 +281,10 @@ final class CameraViewModel: ObservableObject {
             self?.thermal.update(systemPressure: level)
         }
 
-        recorder.onStatusChange = { [weak self] status in self?.recording = status }
+        recorder.onStatusChange = { [weak self] status in
+            self?.recording = status
+            self?.syncRecordingTicker()
+        }
         recorder.onError = { [weak self] error in
             self?.error = error
             Haptics.warning()
@@ -421,6 +431,44 @@ final class CameraViewModel: ObservableObject {
                 self.streamProfile = self.stream.currentProfile
             }
         }
+    }
+
+    /// The recording readout has its own pulse, because nothing else has the
+    /// right lifetime: the telemetry loop only runs while a PC is connected,
+    /// and the writer publishes on events, not on the passage of time. Without
+    /// this the elapsed time froze at the value captured when recording
+    /// started — 00:00, forever — while the file grew perfectly well.
+    ///
+    /// The same beat carries `record.state` to the PC, so its readout ticks
+    /// too, and keeps ticking even for a recording started on the phone.
+    private func syncRecordingTicker() {
+        guard recording.isRecording else {
+            recordingTimer?.invalidate()
+            recordingTimer = nil
+            // The final state still goes out, so the PC learns the recording
+            // ended even when it was stopped from the phone.
+            sendRecordState()
+            return
+        }
+        guard recordingTimer == nil else { return }
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.recording = self.recorder.currentStatus
+                self.sendRecordState()
+            }
+        }
+    }
+
+    private func sendRecordState() {
+        guard let link, link.status.isConnected else { return }
+        link.send(ControlType.recordState,
+                  payload: RecordStatePayload(recording: recording.isRecording,
+                                              sessionId: recording.sessionId,
+                                              target: settings.recordingTarget,
+                                              elapsedUs: recording.elapsedUs,
+                                              phoneOk: recording.phoneOk,
+                                              pcOk: recording.pcOk))
     }
 
     /// Telemetry is sent at most once a second, and only when something

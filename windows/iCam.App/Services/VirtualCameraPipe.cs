@@ -133,7 +133,10 @@ public sealed class VirtualCameraPipe : IAsyncDisposable
         var expected = stride * height * 3 / 2;
         if (nv12.Length < expected) return false;
 
-        if (!Monitor.TryEnter(_writeLock))
+        // The Lock's own TryEnter, not Monitor.TryEnter: Monitor on a Lock
+        // object takes a different lock than the `lock` statements in this
+        // class, which is no mutual exclusion at all.
+        if (!_writeLock.TryEnter())
         {
             FramesDropped++;
             return false;
@@ -157,19 +160,17 @@ public sealed class VirtualCameraPipe : IAsyncDisposable
         catch (Exception error) when (error is IOException or ObjectDisposedException)
         {
             // The Frame Server let go mid-write. The accept loop will notice
-            // and take the next client.
-            lock (_writeLock)
-            {
-                _stream?.Dispose();
-                _stream = null;
-            }
+            // and take the next client. The write lock is already held here,
+            // so the stream can be retired without taking it again.
+            _stream?.Dispose();
+            _stream = null;
             IsConnected = false;
             ConnectionChanged?.Invoke(false);
             return false;
         }
         finally
         {
-            Monitor.Exit(_writeLock);
+            _writeLock.Exit();
         }
     }
 

@@ -103,7 +103,12 @@ public sealed class DecodedFrameSource : IDisposable
         // Never block the decoder. A frame that cannot be handled right now is
         // dropped: the next one is thirty milliseconds away, and a call would
         // rather skip a frame than fall behind its own audio.
-        if (!Monitor.TryEnter(_lock))
+        //
+        // The Lock's own TryEnter, not Monitor.TryEnter: Monitor on a Lock
+        // object takes a *different* lock than the `lock` statements elsewhere
+        // in this class, which is no mutual exclusion at all — the compiler's
+        // CS9216 is about exactly this.
+        if (!_lock.TryEnter())
         {
             FramesSkipped++;
             return;
@@ -133,6 +138,12 @@ public sealed class DecodedFrameSource : IDisposable
             Nv12Decoder.Convert(_nv12, _stride, _display, _width * 4, _width, _height);
 
             FramesProduced++;
+            if (FramesProduced == 1)
+            {
+                // One line, once: with it in the log, "no preview" divides
+                // cleanly into before this point and after it.
+                Log.Media.Info($"First frame through the pipeline: {_width}x{_height}");
+            }
             FrameReady?.Invoke(_nv12, _display);
         }
         catch (Exception error) when (error is ObjectDisposedException
@@ -148,7 +159,7 @@ public sealed class DecodedFrameSource : IDisposable
         }
         finally
         {
-            Monitor.Exit(_lock);
+            _lock.Exit();
         }
     }
 

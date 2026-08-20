@@ -107,6 +107,35 @@ public sealed partial class ConnectedDevice : System.ComponentModel.INotifyPrope
         private set => Set(ref _isStreaming, value);
     }
 
+    /// <summary>
+    /// The recording as the phone last described it, or null when nothing is
+    /// recording. The phone is the only writer of this — the record button
+    /// here only *asks*, and the chip follows what actually happened, so a
+    /// recording started on the phone shows up on this screen too.
+    /// </summary>
+    public RecordStatePayload? Recording
+    {
+        get => _recording;
+        private set
+        {
+            _recording = value;
+            _recordingUpdatedAtMs = Environment.TickCount64;
+            PropertyChanged?.Invoke(this,
+                new System.ComponentModel.PropertyChangedEventArgs(nameof(Recording)));
+        }
+    }
+    private RecordStatePayload? _recording;
+    private long _recordingUpdatedAtMs;
+
+    /// <summary>
+    /// The elapsed time to show right now: the phone's last word plus however
+    /// long ago it said it, so the readout ticks smoothly between messages.
+    /// </summary>
+    public ulong RecordingElapsedUs =>
+        Recording is { Recording: true } state
+            ? state.ElapsedUs + (ulong)Math.Max(0, Environment.TickCount64 - _recordingUpdatedAtMs) * 1000
+            : 0;
+
     public string? PairingDigits => Session.PairingDigits;
     public string Id => Session.PeerFingerprint ?? "";
 
@@ -179,6 +208,32 @@ public sealed partial class ConnectedDevice : System.ComponentModel.INotifyPrope
                     StreamProfile = status.Actual;
                     IsStreaming = status.Active;
                 });
+                break;
+
+            case ControlType.RecordStart:
+                // The phone's confirmation, carrying the sessionId it actually
+                // opened. The periodic record.state takes over from here.
+                var started = ControlCodec.Payload<RecordStartPayload>(envelope);
+                if (started is null) break;
+                Post(() => Recording = new RecordStatePayload
+                {
+                    Recording = true,
+                    SessionId = started.SessionId,
+                    Target = started.Target,
+                    ElapsedUs = 0,
+                    PhoneOk = true,
+                    PcOk = true,
+                });
+                break;
+
+            case ControlType.RecordState:
+                var recordState = ControlCodec.Payload<RecordStatePayload>(envelope);
+                if (recordState is null) break;
+                Post(() => Recording = recordState.Recording ? recordState : null);
+                break;
+
+            case ControlType.RecordStop:
+                Post(() => Recording = null);
                 break;
 
             case ControlType.Error:
